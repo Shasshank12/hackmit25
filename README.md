@@ -31,25 +31,25 @@ Prism is a comprehensive learning ecosystem that captures lectures, processes co
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    SMART GLASSES LAYER                      │
-│                     (MentraOS SDK)                         │
+│                      (MentraOS SDK)                         │
 │           Voice Input ←→ Visual Output ←→ Gestures          │
 └─────────────────────────┬───────────────────────────────────┘
                           │
 ┌─────────────────────────▼───────────────────────────────────┐
 │                  APPLICATION LAYER                          │
-│               (Node.js + TypeScript)                       │
-│        Session Management ←→ Event Handling                │
+│                (Node.js + TypeScript)                       │
+│         Session Management ←→ Event Handling                │
 └─────────────────────────┬───────────────────────────────────┘
                           │
 ┌─────────────────────────▼───────────────────────────────────┐
-│                    AGENT SYSTEM                            │
-│   Topic Detection │ Keyword Extraction │ AI Processing     │
-│   FlashcardGen    │ Quiz Management   │ Caption Display   │
+│                       AGENT SYSTEM                          │
+│     Topic Detection │ Keyword Extraction │ AI Processing    │
+│     FlashcardGen    │ Quiz Management   │ Caption Display   │
 └─────────────────────────┬───────────────────────────────────┘
                           │
 ┌─────────────────────────▼───────────────────────────────────┐
-│                   STORAGE LAYER                            │
-│   Local Files │ Claude Sonnet 4 │ JSON Configs │ Markdown  │
+│                   STORAGE LAYER                             │
+│   Local Files │ Claude Sonnet 4 │ JSON Configs │ Markdown   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
