@@ -54,3 +54,7 @@ temp/
 
 # Railway deployment files (keep railway.json but ignore deployment artifacts)
 .railway/
+
+# Transcripts
+transcripts/*
+!transcripts/.gitkeep

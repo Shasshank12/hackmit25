@@ -91,7 +91,7 @@ class LectureAssistantApp extends AppServer {
   private async showMainMenu(session: AppSession): Promise<void> {
     try {
       const menuText =
-        "🎓 Lecture Assistant\n\nSay 'start lecture' to begin recording\n\nReady to record!";
+        "Lecture Assistant\n\nSay 'start lecture' to begin recording\n\nReady to record!";
       await session.layouts.showTextWall(menuText);
       session.logger.info("✅ Main menu displayed");
     } catch (error) {

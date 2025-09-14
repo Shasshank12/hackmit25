@@ -8,6 +8,7 @@
     "dev": "tsx src/index.ts",
     "demo": "tsx src/demo.ts",
     "demo:transcript": "tsx src/demo-transcript-processing.ts",
+    "demo:quiz": "tsx src/demo-flashcard-quiz.ts",
     "start": "node dist/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
