@@ -87,7 +87,10 @@ class LectureAssistantApp extends AppServer {
 
       // Add CORS headers for web dashboard
       app.use((req: any, res: any, next: any) => {
-        res.header("Access-Control-Allow-Origin", "*");
+        // Allow requests from any origin for development and deployment
+        const origin = req.headers.origin;
+        res.header("Access-Control-Allow-Origin", origin || "*");
+        res.header("Access-Control-Allow-Credentials", "true");
         res.header(
           "Access-Control-Allow-Methods",
           "GET, POST, PUT, DELETE, OPTIONS"

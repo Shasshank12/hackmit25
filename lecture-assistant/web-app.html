@@ -1044,9 +1044,9 @@
                 `;
                 
                 // Fetch latest notes from API
-                const apiBaseUrl = window.location.hostname === 'localhost' 
+                const apiBaseUrl = window.location.hostname === 'localhost' || window.location.protocol === 'file:' 
                     ? 'http://localhost:3000' 
-                    : 'https://your-app-name.railway.app'; // We'll update this after Railway deployment
+                    : 'https://hackmit25-production.up.railway.app'; // Update this with your actual Railway URL
                 const response = await fetch(`${apiBaseUrl}/api/notes/latest`);
                 const data = await response.json();
                 
