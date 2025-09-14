@@ -22,5 +22,10 @@
     "@types/node": "^24.3.3",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.62.0",
+    "express": "^5.1.0",
+    "node-fetch": "^2.7.0"
   }
 }
