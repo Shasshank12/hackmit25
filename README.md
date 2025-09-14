@@ -1,10 +1,10 @@
-# Prism - HackMIT '25
+# SproutNotes - HackMIT '25
 
 An intelligent smart glasses application built for MentraOS that transforms the learning experience through real-time transcription, AI-powered note generation, and interactive study tools.
 
 ## Overview
 
-Prism is a comprehensive learning ecosystem that captures lectures, processes content with AI, and creates interactive study materials - all optimized for hands-free operation on smart glasses.
+SproutNotes is a comprehensive learning ecosystem that captures lectures, processes content with AI, and creates interactive study materials - all optimized for hands-free operation on smart glasses.
 
 ## How It Works
 
