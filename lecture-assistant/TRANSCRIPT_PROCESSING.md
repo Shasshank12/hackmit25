@@ -1,6 +1,6 @@
 # Transcript Processing Feature
 
-This feature allows you to process lecture transcript files (.txt) to generate detailed study notes and flashcards using Claude AI.
+This feature allows you to process lecture transcript files (.txt) to generate detailed study notes and flashcards using Claude Sonnet 4 AI.
 
 ## Features
 
@@ -14,9 +14,10 @@ This feature allows you to process lecture transcript files (.txt) to generate d
 
 ### Prerequisites
 
-1. **Anthropic API Key**: You need a Claude API key from Anthropic
+1. **Anthropic API Key**: You need a Claude Sonnet 4 API key from Anthropic
    - Sign up at [console.anthropic.com](https://console.anthropic.com)
    - Create an API key and set it as an environment variable
+   - Ensure your API key has access to Claude Sonnet 4 (`claude-sonnet-4-20250514`)
 
 2. **Dependencies**: Install the required packages
    ```bash

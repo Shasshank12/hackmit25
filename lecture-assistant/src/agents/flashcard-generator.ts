@@ -42,7 +42,7 @@ export class FlashcardGenerator {
       );
 
       const message = await this.anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 3000,
         temperature: 0.4,
         messages: [
@@ -81,7 +81,7 @@ export class FlashcardGenerator {
       const prompt = this.buildDirectFlashcardPrompt(transcript, maxCards, difficulty);
 
       const message = await this.anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 2500,
         temperature: 0.4,
         messages: [
