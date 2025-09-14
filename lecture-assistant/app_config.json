@@ -1,66 +1,25 @@
 {
-  "name": "Lecture Assistant",
-  "description": "A proactive AI assistant for smart glasses during lectures. Provides real-time transcription, key term detection, and contextual definitions to enhance learning.",
+  "name": "Simple Lecture Recorder",
+  "description": "Records lecture transcripts and saves them to a file. Say 'start lecture' to begin recording, 'stop lecture' to finish and save.",
   "version": "1.0.0",
   "packageName": "com.hackmit.lectureassistant",
   "hardware": [
     {
       "type": "microphone",
       "required": true,
-      "description": "Required for real-time speech transcription during lectures"
+      "description": "Required for recording speech during lectures"
     },
     {
       "type": "display",
       "required": true,
-      "description": "Required for showing definitions, key terms, and app interface"
-    },
-    {
-      "type": "wifi",
-      "required": true,
-      "description": "Required for OpenAI API calls and real-time processing"
+      "description": "Required for showing recording status and instructions"
     }
   ],
-  "settings": [
-    {
-      "key": "key_term_frequency",
-      "type": "select",
-      "label": "Key Term Detection",
-      "description": "Controls how frequently key terms are detected and definitions are shown during lectures",
-      "default": "high",
-      "options": [
-        {
-          "label": "Off",
-          "value": "off"
-        },
-        {
-          "label": "Standard",
-          "value": "standard"
-        },
-        {
-          "label": "High",
-          "value": "high"
-        }
-      ]
-    },
-    {
-      "key": "auto_definitions",
-      "type": "toggle",
-      "label": "Auto Definitions",
-      "description": "Automatically show definitions for detected key terms",
-      "default": true
-    },
-    {
-      "key": "live_captions",
-      "type": "toggle",
-      "label": "Live Captions",
-      "description": "Show real-time speech transcription during lectures",
-      "default": true
-    }
-  ],
+  "settings": [],
   "aiTools": [
     {
       "name": "lecture_control",
-      "description": "Controls lecture mode activation and deactivation through voice commands",
+      "description": "Controls recording through voice commands",
       "triggers": [
         "start lecture",
         "begin lecture",
@@ -69,7 +28,7 @@
       ]
     }
   ],
-  "permissions": ["microphone", "display", "wifi", "transcription", "sensors"],
+  "permissions": ["microphone", "display", "transcription"],
   "urls": {
     "development": "http://localhost:3000",
     "production": "https://your-production-url.com"

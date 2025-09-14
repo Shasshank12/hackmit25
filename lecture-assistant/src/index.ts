@@ -1,84 +1,33 @@
 import { AppServer, AppSession, AppServerConfig } from "@mentra/sdk";
-import { LectureResponseHandler } from "./handlers";
-import { DatabaseManager } from "./DatabaseManager";
-import { ENV_CONFIG, AGENT_SETTINGS } from "./config";
-import {
-  ButtonEvent,
-  VoiceEvent,
-  SensorEvent,
-  DisplayMode,
-  type KeyTerm,
-} from "./types";
+import * as fs from "fs";
+import * as path from "path";
 
 /**
- * LectureAssistantApp - A proactive AI assistant for smart glasses during lectures
- * Implements real-time transcription, key term detection, and contextual definitions
+ * Simple Lecture Assistant - Records transcripts to file
  */
 class LectureAssistantApp extends AppServer {
-  private databaseManager: DatabaseManager;
+  private isRecording: boolean = false;
+  private currentTranscript: string = "";
+  private transcriptFilePath: string = path.join(
+    process.cwd(),
+    "transcript.txt"
+  );
 
   constructor() {
     const config: AppServerConfig = {
-      port: ENV_CONFIG.PORT,
-      packageName: ENV_CONFIG.PACKAGE_NAME,
-      apiKey: ENV_CONFIG.MENTRAOS_API_KEY,
+      port: parseInt(process.env.PORT || "3000"),
+      packageName: process.env.PACKAGE_NAME || "com.hackmit.lectureassistant",
+      apiKey:
+        process.env.MENTRAOS_API_KEY ||
+        "697793ee97a6e87a48fe3ae4be6f358798c3103d36522073b70f4b2c95be2964",
     };
 
-    console.log(`🔧 [${new Date().toISOString()}] App config:`, {
-      port: config.port,
-      packageName: config.packageName,
-      apiKeySet: !!config.apiKey,
-      environment: ENV_CONFIG.NODE_ENV,
-    });
-
+    console.log(`🎓 Lecture Assistant started on port ${config.port}`);
     super(config);
-    this.databaseManager = new DatabaseManager();
-
-    // Add startup health check
-    this.performStartupHealthCheck();
-  }
-
-  /**
-   * Perform startup health check to verify all dependencies are working
-   */
-  private performStartupHealthCheck(): void {
-    try {
-      console.log(
-        `🏥 [${new Date().toISOString()}] Performing startup health check...`
-      );
-
-      // Check environment variables
-      const requiredEnvVars = ["OPENAI_API_KEY", "MENTRAOS_API_KEY"];
-      const missingVars = requiredEnvVars.filter(
-        (varName) => !process.env[varName]
-      );
-
-      if (missingVars.length > 0) {
-        console.error(
-          `❌ Missing required environment variables: ${missingVars.join(", ")}`
-        );
-      } else {
-        console.log(`✅ All required environment variables present`);
-      }
-
-      // Check database manager
-      if (this.databaseManager) {
-        console.log(`✅ Database manager initialized`);
-      } else {
-        console.error(`❌ Database manager failed to initialize`);
-      }
-
-      console.log(`🏥 [${new Date().toISOString()}] Health check completed`);
-    } catch (error) {
-      console.error(`💥 Health check failed:`, error);
-    }
   }
 
   /**
    * Handle new session connections
-   * @param session - The app session instance
-   * @param sessionId - Unique identifier for this session
-   * @param userId - The user ID for this session
    */
   protected async onSession(
     session: AppSession,
@@ -86,64 +35,32 @@ class LectureAssistantApp extends AppServer {
     userId: string
   ): Promise<void> {
     try {
-      session.logger.info(
-        `🚀 New session started: ${sessionId} for user: ${userId}`
-      );
-      session.logger.info(
-        `📱 App version: ${process.env.npm_package_version || "unknown"}`
-      );
-      session.logger.info(`🔧 Environment: ${ENV_CONFIG.NODE_ENV}`);
-
-      // Get initial settings
-      const initialFrequency = (await session.settings.get(
-        "key_term_frequency",
-        "high"
-      )) as "off" | "standard" | "high";
-      session.logger.info(`Initial key term frequency: ${initialFrequency}`);
-
-      // Create response handler for this session
-      const responseHandler = new LectureResponseHandler(
-        session,
-        initialFrequency
-      );
+      session.logger.info(`🚀 New session started: ${sessionId}`);
 
       // Show main menu
       await this.showMainMenu(session);
 
-      // Set up event listeners with response handler
-      await this.setupEventListeners(
-        session,
-        sessionId,
-        userId,
-        responseHandler
-      );
+      // Set up event listeners
+      await this.setupEventListeners(session);
 
-      // Setup transcription listener for real-time processing
-      await this.setupTranscriptionListener(session, responseHandler);
+      // Setup transcription listener
+      await this.setupTranscriptionListener(session);
 
       session.logger.info(`Session setup complete: ${sessionId}`);
     } catch (error) {
       session.logger.error(
         error as any,
-        `❌ Session setup failed: ${sessionId}`,
-        {
-          userId,
-          sessionId,
-        }
+        `❌ Session setup failed: ${sessionId}`
       );
 
       try {
         await session.layouts.showTextWall(
-          "🚫 App Error\n\nSession setup failed\nCheck logs for details\n\nPlease restart the application"
+          "🚫 App Error\n\nSession setup failed\nPlease restart the application"
         );
       } catch (displayError) {
         session.logger.error(
           displayError as any,
-          "💥 Failed to display error message:",
-          {
-            originalError:
-              error instanceof Error ? error.message : String(error),
-          }
+          "💥 Failed to display error message"
         );
       }
     }
@@ -154,268 +71,161 @@ class LectureAssistantApp extends AppServer {
    */
   private async showMainMenu(session: AppSession): Promise<void> {
     try {
-      session.logger.info("📺 Displaying main menu");
-
       const menuText =
-        "🎓 Lecture Assistant\n\nPress button or say 'start lecture' to begin\n\nReady to capture knowledge!";
-
-      session.logger.debug("Menu text to display: " + menuText);
+        "🎓 Lecture Assistant\n\nSay 'start lecture' to begin recording\n\nReady to record!";
       await session.layouts.showTextWall(menuText);
-
-      session.logger.info("✅ Main menu displayed successfully");
+      session.logger.info("✅ Main menu displayed");
     } catch (error) {
       session.logger.error(error as any, "❌ Failed to show main menu");
-
-      // Fallback to simple text
-      try {
-        session.logger.info("🔄 Attempting fallback display...");
-        await session.layouts.showTextWall("🎓 Ready");
-        session.logger.info("✅ Fallback display successful");
-      } catch (fallbackError) {
-        session.logger.error(
-          fallbackError as any,
-          "💥 Fallback display failed",
-          {
-            originalError:
-              error instanceof Error ? error.message : String(error),
-          }
-        );
-      }
-
-      throw error;
+      await session.layouts.showTextWall("🎓 Ready");
     }
   }
 
   /**
    * Setup event listeners for user interactions
    */
-  private async setupEventListeners(
-    session: AppSession,
-    sessionId: string,
-    userId: string,
-    responseHandler: LectureResponseHandler
-  ): Promise<void> {
-    // Listen for button presses
-    session.on("button", async (buttonData: ButtonEvent) => {
-      session.logger.info(
-        `Button ${buttonData.action} pressed - Session: ${sessionId}`
-      );
-
-      if (buttonData.action === "press") {
-        await this.toggleLectureMode(
-          session,
-          sessionId,
-          userId,
-          responseHandler
-        );
-      }
-    });
+  private async setupEventListeners(session: AppSession): Promise<void> {
+    session.logger.info("🔧 Setting up event listeners...");
 
     // Listen for voice commands
-    session.on("voice", async (voiceData: VoiceEvent) => {
-      session.logger.info(
-        `Voice command: "${voiceData.transcript}" - Session: ${sessionId}`
-      );
-
+    session.on("voice", async (voiceData: any) => {
       const command = voiceData.transcript.toLowerCase();
+      session.logger.info(`🗣️ Voice event received: "${voiceData.transcript}"`);
+
       if (
         command.includes("start lecture") ||
         command.includes("begin lecture")
       ) {
-        await this.startLectureMode(
-          session,
-          sessionId,
-          userId,
-          responseHandler
-        );
+        session.logger.info("🚀 Starting recording via voice event");
+        await this.startRecording(session);
       } else if (
         command.includes("stop lecture") ||
         command.includes("end lecture")
       ) {
-        await this.stopLectureMode(session, sessionId, userId, responseHandler);
+        session.logger.info("🛑 Stopping recording via voice event");
+        await this.stopRecording(session);
       }
     });
 
-    // Listen for sensor data (head movements)
-    session.on("sensors", async (sensorData: SensorEvent) => {
-      if (responseHandler.isLectureModeActive()) {
-        session.logger.debug(`Sensor data received - Session: ${sessionId}`);
-        await responseHandler.handleHeadTilt(sensorData);
-      }
-    });
-
-    // Clean up listeners when session ends
-    session.events.onDisconnected(() => {
-      session.logger.info(`Session ${sessionId} disconnected - cleaning up`);
-      responseHandler.reset();
-    });
+    session.logger.info("✅ Event listeners setup complete");
   }
 
   /**
    * Setup real-time transcription listener
    */
-  private async setupTranscriptionListener(
-    session: AppSession,
-    responseHandler: LectureResponseHandler
-  ): Promise<void> {
-    // State for managing transcription buffering
-    let currentUtteranceBuffer = "";
-    let utteranceTimer: NodeJS.Timeout | null = null;
-    const UTTERANCE_TIMEOUT_MS = 3000;
-
-    // Function to process the buffer and reset state
-    const processBufferAndReset = (reason: "isFinal" | "timeout") => {
-      if (utteranceTimer) {
-        clearTimeout(utteranceTimer);
-        utteranceTimer = null;
-      }
-
-      const textToProcess = currentUtteranceBuffer.trim();
-      if (textToProcess.length > 0 && responseHandler.isLectureModeActive()) {
-        session.logger.info(
-          `Processing utterance (${reason}): "${textToProcess}"`
-        );
-        const timestamp = Date.now();
-        responseHandler
-          .processTranscript(textToProcess, timestamp)
-          .catch((error) => {
-            session.logger.error(`Failed to process transcript: ${error}`);
-          });
-      }
-
-      currentUtteranceBuffer = "";
-    };
+  private async setupTranscriptionListener(session: AppSession): Promise<void> {
+    session.logger.info("🎤 Setting up transcription listener...");
 
     // Listen for real-time speech transcriptions
-    const unsubscribe = session.events.onTranscription((data) => {
-      session.logger.debug(
-        `Transcription: "${data.text}", isFinal: ${data.isFinal}`
+    session.events.onTranscription((data) => {
+      session.logger.info(
+        `🎤 Transcription received: "${data.text}", isFinal: ${data.isFinal}`
       );
-
-      const isNewUtterance =
-        currentUtteranceBuffer.length === 0 && data.text.trim().length > 0;
-
-      // Update buffer with latest text
-      currentUtteranceBuffer = data.text;
-
-      if (isNewUtterance) {
-        // Start timeout for max utterance duration
-        utteranceTimer = setTimeout(
-          () => processBufferAndReset("timeout"),
-          UTTERANCE_TIMEOUT_MS
-        );
-      }
 
       if (data.isFinal) {
-        // Process complete utterance
-        processBufferAndReset("isFinal");
+        const command = data.text.toLowerCase();
+
+        // Check for voice commands first
+        if (
+          !this.isRecording &&
+          (command.includes("start lecture") ||
+            command.includes("begin lecture"))
+        ) {
+          session.logger.info(`🚀 Voice command detected: "${data.text}"`);
+          this.startRecording(session);
+          return;
+        }
+
+        if (
+          this.isRecording &&
+          (command.includes("stop lecture") || command.includes("end lecture"))
+        ) {
+          session.logger.info(`🛑 Voice command detected: "${data.text}"`);
+          this.stopRecording(session);
+          return;
+        }
+
+        // If recording, add to transcript
+        if (this.isRecording) {
+          const timestamp = new Date().toISOString();
+          const transcriptLine = `[${timestamp}] ${data.text}\n`;
+
+          this.currentTranscript += transcriptLine;
+          session.logger.info(`Added to transcript: "${data.text}"`);
+        } else {
+          session.logger.info(
+            `🎤 Speech detected but not recording: "${data.text}"`
+          );
+        }
       }
     });
 
-    // Cleanup transcription listener
-    this.addCleanupHandler(() => {
-      if (utteranceTimer) clearTimeout(utteranceTimer);
-      unsubscribe();
-    });
+    session.logger.info("✅ Transcription listener setup complete");
   }
 
   /**
-   * Toggle lecture mode on/off
+   * Start recording transcript
    */
-  private async toggleLectureMode(
-    session: AppSession,
-    sessionId: string,
-    userId: string,
-    responseHandler: LectureResponseHandler
-  ): Promise<void> {
-    if (responseHandler.isLectureModeActive()) {
-      await this.stopLectureMode(session, sessionId, userId, responseHandler);
-    } else {
-      await this.startLectureMode(session, sessionId, userId, responseHandler);
+  private async startRecording(session: AppSession): Promise<void> {
+    if (this.isRecording) {
+      session.logger.info("Already recording");
+      return;
     }
+
+    this.isRecording = true;
+    this.currentTranscript = "";
+
+    session.logger.info("🎙️ Started recording");
+    await session.layouts.showTextWall(
+      "🎙️ Recording Started\n\nListening for speech...\n\nSay 'stop lecture' to finish",
+      { durationMs: 3000 }
+    );
   }
 
   /**
-   * Start lecture mode
+   * Stop recording and save transcript
    */
-  private async startLectureMode(
-    session: AppSession,
-    sessionId: string,
-    userId: string,
-    responseHandler: LectureResponseHandler
-  ): Promise<void> {
-    session.logger.info("Starting lecture mode");
+  private async stopRecording(session: AppSession): Promise<void> {
+    if (!this.isRecording) {
+      session.logger.info("Not currently recording");
+      return;
+    }
+
+    this.isRecording = false;
 
     try {
-      // Start lecture with response handler
-      await responseHandler.startLecture(sessionId);
+      // Save transcript to file
+      await this.saveTranscriptToFile();
 
-      // Show lecture mode activation message
+      session.logger.info("🛑 Recording stopped and saved");
       await session.layouts.showTextWall(
-        "🎓 Lecture Mode Active\n\nListening for speech...\n\nTilt head to see key terms",
-        { durationMs: 3000 }
-      );
-
-      session.logger.info("Lecture mode started successfully");
-    } catch (error) {
-      session.logger.error("Failed to start lecture mode:", error as any);
-      await session.layouts.showTextWall("❌ Failed to start lecture mode");
-    }
-  }
-
-  /**
-   * Stop lecture mode
-   */
-  private async stopLectureMode(
-    session: AppSession,
-    sessionId: string,
-    userId: string,
-    responseHandler: LectureResponseHandler
-  ): Promise<void> {
-    session.logger.info("Stopping lecture mode");
-
-    try {
-      // Stop lecture and get results
-      const lectureResults = await responseHandler.stopLecture();
-
-      // Save results to database
-      if (lectureResults.keyTerms.length > 0) {
-        await this.databaseManager.saveKeyTerms(
-          sessionId,
-          userId,
-          lectureResults.keyTerms
-        );
-      }
-
-      // Save lecture session
-      const lectureSession = {
-        id: sessionId,
-        userId,
-        startTime: new Date(Date.now() - lectureResults.duration * 1000),
-        endTime: new Date(),
-        duration: lectureResults.duration,
-        transcript: "", // Would be populated with full transcript
-        keyTermsCount: lectureResults.keyTerms.length,
-      };
-
-      await this.databaseManager.saveLectureSession(lectureSession);
-
-      session.logger.info(
-        `Lecture completed - Duration: ${lectureResults.duration}s, Key terms: ${lectureResults.keyTerms.length}`
+        "✅ Recording Complete!\n\nTranscript saved to transcript.txt\n\nSay 'start lecture' for new recording",
+        { durationMs: 5000 }
       );
 
       // Return to main menu after delay
       setTimeout(async () => {
         await this.showMainMenu(session);
-      }, 5000);
+      }, 6000);
     } catch (error) {
-      session.logger.error("Failed to stop lecture mode:", error as any);
-      await session.layouts.showTextWall("❌ Error stopping lecture");
+      session.logger.error("Failed to save transcript:", error as any);
+      await session.layouts.showTextWall("❌ Error saving transcript");
+    }
+  }
 
-      // Still try to return to main menu
-      setTimeout(async () => {
-        await this.showMainMenu(session);
-      }, 3000);
+  /**
+   * Save current transcript to file
+   */
+  private async saveTranscriptToFile(): Promise<void> {
+    try {
+      const header = `# Lecture Transcript\nGenerated: ${new Date().toISOString()}\n\n`;
+      const fullContent = header + this.currentTranscript;
+
+      await fs.promises.writeFile(this.transcriptFilePath, fullContent, "utf8");
+      console.log(`📄 Transcript saved to: ${this.transcriptFilePath}`);
+    } catch (error) {
+      console.error("Error saving transcript:", error);
+      throw error;
     }
   }
 }
@@ -424,4 +234,6 @@ class LectureAssistantApp extends AppServer {
 const app = new LectureAssistantApp();
 app.start();
 
-console.log("Lecture Assistant app started on port", process.env.PORT || 3000);
+console.log(
+  "🎓 Simple Lecture Assistant started - Ready to record transcripts!"
+);
