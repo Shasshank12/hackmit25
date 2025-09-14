@@ -130,6 +130,24 @@ export enum DisplayMode {
     LECTURE_COMPLETE = 'lecture_complete'
 }
 
+// Topic collection interfaces
+export interface LectureTopic {
+    subject: string;
+    subtopic: string;
+    level: AcademicLevel;
+    timestamp: Date;
+}
+
+export type AcademicLevel = 'high_school' | 'college' | 'masters' | 'phd' | 'professional';
+
+export interface TopicCollectionState {
+    isCollecting: boolean;
+    currentStep: TopicCollectionStep;
+    collectedData: Partial<LectureTopic>;
+}
+
+export type TopicCollectionStep = 'subject' | 'subtopic' | 'level' | 'complete';
+
 // Event interfaces
 export interface ButtonEvent {
     action: string;

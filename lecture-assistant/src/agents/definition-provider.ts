@@ -1,9 +1,12 @@
-import { KeyTerm } from "../types";
+import { KeyTerm, LectureTopic } from "../types";
+import { KeywordGenerator } from "./keyword-generator";
 
 /**
  * Agent responsible for providing definitions for detected key terms
  */
 export class DefinitionProvider {
+  private keywordGenerator: KeywordGenerator;
+  private currentTopic: LectureTopic | null = null;
   private definitions: Map<string, string> = new Map([
     // AI/ML Terms
     [
@@ -122,6 +125,17 @@ export class DefinitionProvider {
     ],
   ]);
 
+  constructor() {
+    this.keywordGenerator = new KeywordGenerator();
+  }
+
+  /**
+   * Set the current lecture topic
+   */
+  setTopic(topic: LectureTopic): void {
+    this.currentTopic = topic;
+  }
+
   /**
    * Get definition for a key term
    */
@@ -141,8 +155,19 @@ export class DefinitionProvider {
       }
     }
 
-    // If no definition found, could integrate with external APIs here
-    // For now, return a generic response
+    // Try to generate definition using Claude API if we have a topic
+    if (this.currentTopic) {
+      try {
+        const generatedDefinition = await this.keywordGenerator.generateDefinition(term, this.currentTopic);
+        if (generatedDefinition && generatedDefinition.length > 0) {
+          return generatedDefinition;
+        }
+      } catch (error) {
+        console.error(`Error generating definition for "${term}":`, error);
+      }
+    }
+
+    // Fallback to generic definition
     return this.generateGenericDefinition(term);
   }
 

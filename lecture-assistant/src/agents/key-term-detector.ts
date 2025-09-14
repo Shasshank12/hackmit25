@@ -1,9 +1,13 @@
-import { Action, AgentType, type AgentResponse, type KeyTerm } from "../types";
+import { Action, AgentType, type AgentResponse, type KeyTerm, type LectureTopic } from "../types";
+import { KeywordGenerator } from "./keyword-generator";
 
 /**
  * Agent responsible for detecting academic key terms in transcripts
  */
 export class KeyTermDetector {
+  private keywordGenerator: KeywordGenerator;
+  private currentTopic: LectureTopic | null = null;
+  private currentKeywords: string[] = [];
   private academicPatterns = [
     // Computer Science
     { pattern: /machine learning/gi, category: "AI/ML" },
@@ -41,12 +45,38 @@ export class KeyTermDetector {
     { pattern: /theoretical/gi, category: "Academic" },
   ];
 
+  constructor() {
+    this.keywordGenerator = new KeywordGenerator();
+  }
+
+  /**
+   * Set the current lecture topic and generate keywords
+   */
+  async setTopic(topic: LectureTopic): Promise<void> {
+    this.currentTopic = topic;
+    
+    try {
+      this.currentKeywords = await this.keywordGenerator.generateKeywords(topic);
+      console.log(`Loaded ${this.currentKeywords.length} keywords for topic: ${topic.subject} - ${topic.subtopic}`);
+    } catch (error) {
+      console.error('Error loading keywords for topic:', error);
+      this.currentKeywords = [];
+    }
+  }
+
   /**
    * Detect key terms in transcript text
    */
   async detectKeyTerms(text: string, timestamp: number): Promise<KeyTerm[]> {
     const detectedTerms: KeyTerm[] = [];
 
+    // First, check for topic-specific keywords
+    if (this.currentKeywords.length > 0) {
+      const topicTerms = await this.detectTopicSpecificTerms(text, timestamp);
+      detectedTerms.push(...topicTerms);
+    }
+
+    // Then, check for general academic patterns
     for (const { pattern, category } of this.academicPatterns) {
       const matches = text.match(pattern);
       if (matches) {
@@ -78,16 +108,60 @@ export class KeyTermDetector {
   }
 
   /**
+   * Detect topic-specific terms from generated keywords
+   */
+  private async detectTopicSpecificTerms(text: string, timestamp: number): Promise<KeyTerm[]> {
+    const detectedTerms: KeyTerm[] = [];
+    const normalizedText = text.toLowerCase();
+
+    for (const keyword of this.currentKeywords) {
+      // Check for exact matches
+      if (normalizedText.includes(keyword.toLowerCase())) {
+        const keyTerm = await this.createKeyTerm(
+          keyword,
+          text,
+          timestamp,
+          this.currentTopic ? `${this.currentTopic.subject} - ${this.currentTopic.subtopic}` : 'Topic-specific'
+        );
+        if (keyTerm) {
+          detectedTerms.push(keyTerm);
+        }
+      } else {
+        // Check for partial matches (for multi-word terms)
+        const keywordWords = keyword.toLowerCase().split(/\s+/);
+        if (keywordWords.length > 1) {
+          const matchedWords = keywordWords.filter(word => normalizedText.includes(word));
+          if (matchedWords.length >= Math.ceil(keywordWords.length * 0.7)) { // 70% word match
+            const keyTerm = await this.createKeyTerm(
+              keyword,
+              text,
+              timestamp,
+              this.currentTopic ? `${this.currentTopic.subject} - ${this.currentTopic.subtopic}` : 'Topic-specific',
+              0.7 // Lower confidence for partial matches
+            );
+            if (keyTerm) {
+              detectedTerms.push(keyTerm);
+            }
+          }
+        }
+      }
+    }
+
+    return detectedTerms;
+  }
+
+  /**
    * Create a key term object with context
    */
   private async createKeyTerm(
     term: string,
     fullText: string,
     timestamp: number,
-    category: string
+    category: string,
+    baseConfidence?: number
   ): Promise<KeyTerm | null> {
     const context = this.extractContext(term, fullText);
-    const confidence = this.calculateConfidence(term, fullText, context);
+    const confidence = baseConfidence || this.calculateConfidence(term, fullText, context);
 
     // Only return terms with sufficient confidence
     if (confidence < 0.6) {

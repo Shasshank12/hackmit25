@@ -7,12 +7,14 @@ import {
   type KeyTerm,
   type SensorData,
   DisplayMode,
+  type LectureTopic,
 } from "../types";
 import {
   LectureProcessor,
   KeyTermDetector,
   DefinitionProvider,
   CaptionManager,
+  TopicCollector,
 } from "../agents";
 import {
   TRANSCRIPT_BUFFER_LENGTH,
@@ -32,9 +34,11 @@ export class LectureResponseHandler {
   private keyTermDetector: KeyTermDetector;
   private definitionProvider: DefinitionProvider;
   private captionManager: CaptionManager;
+  private topicCollector: TopicCollector;
   private recentKeyTerms: KeyTerm[] = [];
   private isInLectureMode: boolean = false;
   private currentSessionId: string | null = null;
+  private currentLectureTopic: LectureTopic | null = null;
 
   // Settings
   public keyTermFrequency: "off" | "standard" | "high";
@@ -53,6 +57,7 @@ export class LectureResponseHandler {
     this.keyTermDetector = new KeyTermDetector();
     this.definitionProvider = new DefinitionProvider();
     this.captionManager = new CaptionManager();
+    this.topicCollector = new TopicCollector(session);
 
     // Load initial settings
     this.loadAgentSettings();
@@ -138,19 +143,20 @@ export class LectureResponseHandler {
   }
 
   /**
-   * Start lecture mode
+   * Start lecture mode with topic collection
    */
   async startLecture(sessionId: string): Promise<void> {
-    this.isInLectureMode = true;
     this.currentSessionId = sessionId;
     this.conversation = [];
     this.recentKeyTerms = [];
+    this.currentLectureTopic = null;
 
-    this.session.logger.info(`Started lecture mode for session: ${sessionId}`);
+    this.session.logger.info(`Starting topic collection for session: ${sessionId}`);
 
-    // Show lecture start message
-    const response = this.captionManager.showMainMenu(Date.now());
-    await this.displayAgentResponse(response);
+    // Start topic collection process
+    await this.topicCollector.startCollection(async (topic: LectureTopic) => {
+      await this.onTopicCollectionComplete(topic, sessionId);
+    });
   }
 
   /**
@@ -183,9 +189,35 @@ export class LectureResponseHandler {
   }
 
   /**
+   * Handle topic collection completion
+   */
+  private async onTopicCollectionComplete(topic: LectureTopic, sessionId: string): Promise<void> {
+    this.currentLectureTopic = topic;
+    this.isInLectureMode = true;
+
+    this.session.logger.info(`Topic collection completed. Starting lecture mode with topic: ${JSON.stringify(topic)}`);
+
+    // Set the topic for key term detection and definition providers
+    await this.keyTermDetector.setTopic(topic);
+    this.definitionProvider.setTopic(topic);
+
+    // Show lecture mode activation message
+    await this.session.layouts.showTextWall(
+      "🎓 Lecture Mode Active\n\nListening for speech...\n\nTilt head to see key terms",
+      { durationMs: 3000 }
+    );
+  }
+
+  /**
    * Process a new transcript segment
    */
   async processTranscript(text: string, timestamp: number): Promise<void> {
+    // Check if we're in topic collection mode
+    if (this.topicCollector.isCollecting()) {
+      await this.topicCollector.processVoiceInput(text);
+      return;
+    }
+
     if (!this.isInLectureMode) {
       return;
     }
@@ -468,6 +500,13 @@ export class LectureResponseHandler {
   }
 
   /**
+   * Get current lecture topic
+   */
+  getCurrentLectureTopic(): LectureTopic | null {
+    return this.currentLectureTopic;
+  }
+
+  /**
    * Clear conversation and reset state
    */
   reset(): void {
@@ -475,6 +514,8 @@ export class LectureResponseHandler {
     this.recentKeyTerms = [];
     this.isInLectureMode = false;
     this.currentSessionId = null;
+    this.currentLectureTopic = null;
     this.captionManager.forceClear();
+    this.topicCollector.cancelCollection();
   }
 }

@@ -42,5 +42,6 @@ export const ENV_CONFIG = {
   MENTRAOS_API_KEY:
     process.env.MENTRAOS_API_KEY ||
     "697793ee97a6e87a48fe3ae4be6f358798c3103d36522073b70f4b2c95be2964",
+  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "",
   NODE_ENV: process.env.NODE_ENV || "development",
 };
