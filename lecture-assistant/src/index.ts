@@ -20,10 +20,8 @@ import { DISPLAY_DURATION_MS } from "./config";
 class LectureAssistantApp extends AppServer {
   private isRecording: boolean = false;
   private currentTranscript: string = "";
-  private transcriptFilePath: string = path.join(
-    process.cwd(),
-    "transcript.txt"
-  );
+  private transcriptsDir: string = path.join(process.cwd(), "transcripts");
+  private currentTranscriptPath: string = "";
   private keywordMappingsPath: string = path.join(
     process.cwd(),
     "keyword-mappings.json"
@@ -32,6 +30,7 @@ class LectureAssistantApp extends AppServer {
   private keywordGenerator: KeywordGenerator | null = null;
   private currentTopic: LectureTopic | null = null;
   private keywordDefinitions: Map<string, string> = new Map();
+  private isShowingDefinition: boolean = false;
 
   constructor() {
     const config: AppServerConfig = {
@@ -263,6 +262,17 @@ class LectureAssistantApp extends AppServer {
     this.isRecording = true;
     this.currentTranscript = "";
 
+    // Create transcripts directory if it doesn't exist
+    await this.ensureTranscriptsDirectory();
+
+    // Generate unique transcript filename
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const topicName = this.currentTopic
+      ? `${this.currentTopic.subject}-${this.currentTopic.academicLevel}`
+      : "lecture";
+    const filename = `${timestamp}_${topicName.replace(/\s+/g, "-")}.txt`;
+    this.currentTranscriptPath = path.join(this.transcriptsDir, filename);
+
     session.logger.info("🎙️ Started recording");
     const topicInfo = this.currentTopic
       ? `Subject: ${this.currentTopic.subject}\nLevel: ${this.currentTopic.academicLevel}\n\n`
@@ -306,15 +316,34 @@ class LectureAssistantApp extends AppServer {
   }
 
   /**
+   * Ensure transcripts directory exists
+   */
+  private async ensureTranscriptsDirectory(): Promise<void> {
+    try {
+      await fs.promises.mkdir(this.transcriptsDir, { recursive: true });
+    } catch (error) {
+      console.error("Error creating transcripts directory:", error);
+      throw error;
+    }
+  }
+
+  /**
    * Save current transcript to file
    */
   private async saveTranscriptToFile(): Promise<void> {
     try {
-      const header = `# Lecture Transcript\nGenerated: ${new Date().toISOString()}\n\n`;
+      const topicInfo = this.currentTopic
+        ? `Subject: ${this.currentTopic.subject}\nLevel: ${this.currentTopic.academicLevel}\n`
+        : "";
+      const header = `# Lecture Transcript\nGenerated: ${new Date().toISOString()}\n${topicInfo}\n`;
       const fullContent = header + this.currentTranscript;
 
-      await fs.promises.writeFile(this.transcriptFilePath, fullContent, "utf8");
-      console.log(`📄 Transcript saved to: ${this.transcriptFilePath}`);
+      await fs.promises.writeFile(
+        this.currentTranscriptPath,
+        fullContent,
+        "utf8"
+      );
+      console.log(`📄 Transcript saved to: ${this.currentTranscriptPath}`);
     } catch (error) {
       console.error("Error saving transcript:", error);
       throw error;
@@ -328,19 +357,23 @@ class LectureAssistantApp extends AppServer {
     session: AppSession,
     text: string
   ): Promise<void> {
-    if (this.keywordDefinitions.size === 0) {
-      return; // No keywords to check
+    if (this.keywordDefinitions.size === 0 || this.isShowingDefinition) {
+      return; // No keywords to check or already showing a definition
     }
 
     const lowerText = text.toLowerCase();
-    const words = lowerText.split(/\s+/);
 
-    // Check each word and phrase for keyword matches
-    for (const [keyword, definition] of this.keywordDefinitions.entries()) {
-      if (lowerText.includes(keyword)) {
+    // Sort keywords by length (longest first) to prioritize multi-word terms
+    const sortedKeywords = Array.from(this.keywordDefinitions.entries()).sort(
+      ([a], [b]) => b.length - a.length
+    );
+
+    // Check for keyword matches, prioritizing longer terms
+    for (const [keyword, definition] of sortedKeywords) {
+      if (lowerText.includes(keyword.toLowerCase())) {
         session.logger.info(`🔍 Keyword detected: "${keyword}"`);
         await this.displayKeywordDefinition(session, keyword, definition);
-        break; // Only show one definition at a time to avoid overwhelming the user
+        break; // Only show one definition at a time
       }
     }
   }
@@ -354,6 +387,7 @@ class LectureAssistantApp extends AppServer {
     definition: string
   ): Promise<void> {
     try {
+      this.isShowingDefinition = true;
       const displayText = `💡 ${keyword.toUpperCase()}\n\n${definition}`;
 
       await session.layouts.showTextWall(displayText, {
@@ -361,11 +395,17 @@ class LectureAssistantApp extends AppServer {
       });
 
       session.logger.info(`📖 Displayed definition for: ${keyword}`);
+
+      // Reset the flag after the display duration
+      setTimeout(() => {
+        this.isShowingDefinition = false;
+      }, DISPLAY_DURATION_MS.KEYWORD_DEFINITION);
     } catch (error) {
       session.logger.error(
         `Failed to display definition for ${keyword}:`,
         error as any
       );
+      this.isShowingDefinition = false;
     }
   }
 

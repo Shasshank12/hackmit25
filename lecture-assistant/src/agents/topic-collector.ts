@@ -137,6 +137,13 @@ export class TopicCollector {
    * Extract subject from voice input
    */
   private extractSubject(input: string): string | null {
+    const cleanInput = input.toLowerCase().trim();
+
+    // Validate that it's a proper academic subject
+    if (!this.isValidAcademicSubject(cleanInput)) {
+      return null;
+    }
+
     // Common subject patterns
     const subjectPatterns = [
       // Direct statements
@@ -204,6 +211,10 @@ export class TopicCollector {
    * Extract academic level from voice input
    */
   private extractAcademicLevel(input: string): AcademicLevel | null {
+    // First validate if it's a proper academic level
+    if (!this.isValidAcademicLevel(input)) {
+      return null;
+    }
     const levelMappings: { [key: string]: AcademicLevel } = {
       // High school variations
       "high school": AcademicLevel.HIGH_SCHOOL,
@@ -378,6 +389,121 @@ export class TopicCollector {
     };
 
     return levelLabels[level];
+  }
+
+  /**
+   * Validate if input is a proper academic subject
+   */
+  private isValidAcademicSubject(input: string): boolean {
+    // Reject obviously non-academic inputs
+    const invalidPatterns = [
+      /^(hi|hey|hello|yes|no|ok|okay|sure|maybe|i|me|my|the|a|an|and|or|but)$/i,
+      /^(my name is|i am|i'm|this is)/i,
+      /^(one|two|three|four|five|six|seven|eight|nine|ten|\d+)$/i,
+      /^.{1,2}$/i, // Too short (1-2 characters)
+      /^.{50,}$/i, // Too long (50+ characters)
+    ];
+
+    for (const pattern of invalidPatterns) {
+      if (pattern.test(input)) {
+        return false;
+      }
+    }
+
+    // Must contain at least one letter
+    if (!/[a-zA-Z]/.test(input)) {
+      return false;
+    }
+
+    // Valid academic subjects (partial list)
+    const validSubjects = [
+      "math",
+      "mathematics",
+      "algebra",
+      "calculus",
+      "geometry",
+      "statistics",
+      "science",
+      "physics",
+      "chemistry",
+      "biology",
+      "anatomy",
+      "physiology",
+      "history",
+      "american history",
+      "world history",
+      "european history",
+      "english",
+      "literature",
+      "writing",
+      "composition",
+      "grammar",
+      "computer science",
+      "programming",
+      "coding",
+      "software engineering",
+      "art",
+      "music",
+      "philosophy",
+      "psychology",
+      "sociology",
+      "anthropology",
+      "economics",
+      "political science",
+      "government",
+      "civics",
+      "geography",
+      "geology",
+      "astronomy",
+      "astrophysics",
+      "engineering",
+      "mechanical engineering",
+      "electrical engineering",
+      "business",
+      "marketing",
+      "accounting",
+      "finance",
+      "medicine",
+      "nursing",
+      "health",
+      "nutrition",
+      "education",
+      "pedagogy",
+      "linguistics",
+      "foreign language",
+      "spanish",
+      "french",
+      "german",
+      "chinese",
+      "japanese",
+    ];
+
+    // Check if input contains any valid subject keywords
+    const inputLower = input.toLowerCase();
+    return validSubjects.some(
+      (subject) => inputLower.includes(subject) || subject.includes(inputLower)
+    );
+  }
+
+  /**
+   * Validate if input is a proper academic level
+   */
+  private isValidAcademicLevel(input: string): boolean {
+    const validLevels = [
+      "elementary",
+      "middle school",
+      "high school",
+      "undergraduate",
+      "graduate",
+      "professional",
+      "college",
+      "university",
+    ];
+
+    const inputLower = input.toLowerCase();
+    return validLevels.some(
+      (level) => inputLower.includes(level) || level.includes(inputLower)
+    );
   }
 
   /**
