@@ -50,27 +50,36 @@ export class KeywordGenerator {
   ): Promise<string[]> {
     const levelDescription = this.getLevelDescription(topic.level);
 
-    const prompt = `You are an expert educational assistant. Generate a comprehensive list of key terms and concepts that would be covered in a ${levelDescription} lecture about "${topic.subject}" focusing specifically on "${topic.subtopic}".
+    const prompt = `You are an expert educational assistant. Generate a list of key terms and concepts that would actually be SPOKEN OUT LOUD in a ${levelDescription} lecture about "${topic.subject}" focusing specifically on "${topic.subtopic}".
 
-Requirements:
+CRITICAL REQUIREMENTS:
 - Generate 20-30 key terms that are essential for understanding this topic
+- ONLY include terms that a professor would actually SAY during a lecture
+- Use the EXACT words and phrases students would HEAR, not written format
+- NO numbers, NO bullet points, NO parentheses, NO formatting
+- Focus on natural spoken terminology
 - Include both basic and advanced concepts appropriate for ${levelDescription} level
-- Focus on the most important terminology that students need to know
-- Include terms that might be mentioned in lectures, textbooks, or discussions
-- Consider related concepts, processes, people, events, or theories
 
-Format your response as a simple list, with each key term on a new line. Do not include explanations or definitions, just the terms themselves.
+Format: Put each term on its own line with NO numbering, NO bullets, NO special characters.
 
-Example for "American History - World War 2":
-Allied Powers
-Axis Powers
-Pearl Harbor
-D-Day
-Holocaust
-Blitzkrieg
-etc.
+GOOD example for "American History - World War 2":
+allied powers
+axis powers
+pearl harbor
+d day
+holocaust
+blitzkrieg
+franklin roosevelt
+winston churchill
 
-Now generate the key terms for "${topic.subject} - ${topic.subtopic}" at ${levelDescription} level:`;
+BAD example (DO NOT DO THIS):
+1. Allied Powers
+2. Axis Powers (1939-1945)
+- Pearl Harbor attack
+• D-Day invasion
+
+Now generate the key terms for "${topic.subject} - ${topic.subtopic}" at ${levelDescription} level.
+Remember: ONLY terms that would be spoken naturally in a lecture:`;
 
     const response = await this.anthropic.messages.create({
       model: "claude-3-haiku-20240307", // Using Haiku for faster, cheaper responses
@@ -89,7 +98,7 @@ Now generate the key terms for "${topic.subject} - ${topic.subtopic}" at ${level
       throw new Error("Unexpected response type from Claude");
     }
 
-    // Parse the response into a list of keywords
+    // Parse the response into a list of natural spoken keywords
     const keywords = content.text
       .split("\n")
       .map((line: string) => line.trim())
@@ -97,8 +106,18 @@ Now generate the key terms for "${topic.subject} - ${topic.subtopic}" at ${level
         (line: string) =>
           line.length > 0 && !line.match(/^(key terms?|concepts?|topics?):?$/i)
       )
-      .map((line: string) => line.replace(/^[-•*]\s*/, "")) // Remove bullet points
+      .map((line: string) => {
+        // Remove numbers, bullet points, and parentheses
+        return line
+          .replace(/^\d+\.\s*/, "") // Remove "1. ", "2. ", etc.
+          .replace(/^[-•*]\s*/, "") // Remove bullet points
+          .replace(/\([^)]*\)/g, "") // Remove anything in parentheses
+          .replace(/^\w+:\s*/, "") // Remove "Term: " prefixes
+          .trim()
+          .toLowerCase(); // Convert to lowercase for natural matching
+      })
       .filter((keyword: string) => keyword.length > 1 && keyword.length < 50) // Reasonable length
+      .filter((keyword: string) => !keyword.match(/^(etc|example|good|bad)$/i)) // Remove common unwanted words
       .slice(0, 30); // Limit to 30 keywords
 
     console.log(
@@ -153,11 +172,12 @@ Now generate the key terms for "${topic.subject} - ${topic.subtopic}" at ${level
 
 Requirements:
 - Write a definition appropriate for ${levelDescription} students
-- Keep it concise (maximum 100 characters) as it will be displayed on smart glasses
+- Keep it very concise (maximum 20 words) as it will be displayed on smart glasses
 - Make it specific to the ${topic.subject} context when relevant
 - Use simple, clear language
 - Focus on the most important aspect of the term
 - Do not include examples or lengthy explanations
+- Do not use introductory phrases like "The term" or "This is"
 
 ${contextInfo}
 
@@ -165,7 +185,7 @@ Provide only the definition, nothing else.`;
 
     const response = await this.anthropic.messages.create({
       model: "claude-3-haiku-20240307",
-      max_tokens: 150,
+      max_tokens: 100, // Reduced since we're asking for shorter definitions
       temperature: 0.2,
       messages: [
         {
@@ -182,10 +202,10 @@ Provide only the definition, nothing else.`;
 
     let definition = content.text.trim();
 
-    // Clean up the definition
+    // Clean up the definition (remove quotes and unwanted prefixes only)
     definition = definition.replace(/^["']|["']$/g, ""); // Remove quotes
     definition = definition.replace(/^(the term|term|definition):?\s*/i, ""); // Remove prefixes
-    definition = definition.substring(0, 100); // Ensure it fits in glasses display
+    // Note: No longer trimming to character limit - Claude is prompted to keep it short
 
     console.log(`Generated definition for "${term}": "${definition}"`);
     return definition;

@@ -1,0 +1,40 @@
+{
+  "title": "Flashcards - C:\\Users\\gordo\\hackmit25\\lecture-assistant\\transcripts\\2025-09-14T06-21-41-406Z_Math-graduate.txt",
+  "description": "Study flashcards generated from lecture transcript",
+  "cards": [
+    {
+      "term": "What is text overflow in user interface design?",
+      "definition": "A display issue that occurs when content (such as text or definitions) exceeds the allocated space in the user interface, causing truncation or improper formatting that affects readability and user experience."
+    },
+    {
+      "term": "What are 'wedges' in the context of this educational software?",
+      "definition": "Visual symbols or indicators that appear in the interface when definitions or text content exceed the display limits, serving as markers to show that content has been truncated or cut off."
+    },
+    {
+      "term": "What is a flashcards pipeline in educational software development?",
+      "definition": "A systematic process or workflow for creating, processing, and displaying flashcard content in an educational application, including data handling, formatting, and user interaction components."
+    },
+    {
+      "term": "Why might developers choose to revert to a previous software version during debugging?",
+      "definition": "To restore functionality when current changes have introduced critical bugs or display issues, ensuring a stable working baseline while planning more systematic fixes for the identified problems."
+    },
+    {
+      "term": "What are 'text balls' in this software interface context?",
+      "definition": "A display method or visual element used to present text content in the educational application, apparently more reliable than other display methods for handling variable-length definitions and content."
+    },
+    {
+      "term": "What is the trade-off between feature development and demo preparation?",
+      "definition": "The decision to prioritize working functionality for demonstration purposes over developing new features, often requiring developers to use simpler content or revert to stable versions to ensure reliable performance."
+    },
+    {
+      "term": "How do community nodes function in this educational interface?",
+      "definition": "Additional display elements that appear in the software interface, likely representing connections or relationships between educational content, though their specific functionality requires further development work."
+    },
+    {
+      "term": "What is a common short-term workaround for text display issues?",
+      "definition": "Using content with shorter definitions or text that fits within current display constraints, allowing the software to function properly while longer-term solutions for handling variable-length content are developed."
+    }
+  ],
+  "createdAt": "2025-09-14T06:25:46.141Z",
+  "sourceNotes": "## Technical Context\n**Software Development Session**: This transcript documents a debugging session for what appears to be an educational technology application rather than a traditional mathematics ..."
+}
