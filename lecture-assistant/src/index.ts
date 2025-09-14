@@ -1,295 +1,422 @@
 import { AppServer, AppSession, AppServerConfig } from "@mentra/sdk";
-import { LectureManager } from "./LectureManager";
-import { KeyTermExtractor } from "./KeyTermExtractor";
+import { LectureResponseHandler } from "./handlers";
 import { DatabaseManager } from "./DatabaseManager";
+import { ENV_CONFIG, AGENT_SETTINGS } from "./config";
+import {
+  ButtonEvent,
+  VoiceEvent,
+  SensorEvent,
+  DisplayMode,
+  type KeyTerm,
+} from "./types";
 
-interface ButtonEvent {
-  action: string;
-  button?: string;
-}
-
-interface VoiceEvent {
-  transcript: string;
-  confidence?: number;
-}
-
-interface SensorEvent {
-  accelerometer?: {
-    x: number;
-    y: number;
-    z: number;
-  };
-  gyroscope?: {
-    x: number;
-    y: number;
-    z: number;
-  };
-}
-
+/**
+ * LectureAssistantApp - A proactive AI assistant for smart glasses during lectures
+ * Implements real-time transcription, key term detection, and contextual definitions
+ */
 class LectureAssistantApp extends AppServer {
-  private lectureManager: LectureManager;
-  private keyTermExtractor: KeyTermExtractor;
   private databaseManager: DatabaseManager;
 
   constructor() {
     const config: AppServerConfig = {
-      port: parseInt(process.env.PORT || "3000"),
-      packageName: process.env.PACKAGE_NAME || "com.hackmit.lectureassistant",
-      apiKey:
-        process.env.MENTRAOS_API_KEY ||
-        "697793ee97a6e87a48fe3ae4be6f358798c3103d36522073b70f4b2c95be2964",
+      port: ENV_CONFIG.PORT,
+      packageName: ENV_CONFIG.PACKAGE_NAME,
+      apiKey: ENV_CONFIG.MENTRAOS_API_KEY,
     };
 
     console.log(`🔧 [${new Date().toISOString()}] App config:`, {
       port: config.port,
       packageName: config.packageName,
       apiKeySet: !!config.apiKey,
+      environment: ENV_CONFIG.NODE_ENV,
     });
 
     super(config);
-    this.lectureManager = new LectureManager();
-    this.keyTermExtractor = new KeyTermExtractor();
     this.databaseManager = new DatabaseManager();
+
+    // Add startup health check
+    this.performStartupHealthCheck();
   }
 
+  /**
+   * Perform startup health check to verify all dependencies are working
+   */
+  private performStartupHealthCheck(): void {
+    try {
+      console.log(
+        `🏥 [${new Date().toISOString()}] Performing startup health check...`
+      );
+
+      // Check environment variables
+      const requiredEnvVars = ["OPENAI_API_KEY", "MENTRAOS_API_KEY"];
+      const missingVars = requiredEnvVars.filter(
+        (varName) => !process.env[varName]
+      );
+
+      if (missingVars.length > 0) {
+        console.error(
+          `❌ Missing required environment variables: ${missingVars.join(", ")}`
+        );
+      } else {
+        console.log(`✅ All required environment variables present`);
+      }
+
+      // Check database manager
+      if (this.databaseManager) {
+        console.log(`✅ Database manager initialized`);
+      } else {
+        console.error(`❌ Database manager failed to initialize`);
+      }
+
+      console.log(`🏥 [${new Date().toISOString()}] Health check completed`);
+    } catch (error) {
+      console.error(`💥 Health check failed:`, error);
+    }
+  }
+
+  /**
+   * Handle new session connections
+   * @param session - The app session instance
+   * @param sessionId - Unique identifier for this session
+   * @param userId - The user ID for this session
+   */
   protected async onSession(
     session: AppSession,
     sessionId: string,
     userId: string
   ): Promise<void> {
     try {
-      console.log(
-        `🔗 [${new Date().toISOString()}] New session started: ${sessionId} for user: ${userId}`
+      session.logger.info(
+        `🚀 New session started: ${sessionId} for user: ${userId}`
+      );
+      session.logger.info(
+        `📱 App version: ${process.env.npm_package_version || "unknown"}`
+      );
+      session.logger.info(`🔧 Environment: ${ENV_CONFIG.NODE_ENV}`);
+
+      // Get initial settings
+      const initialFrequency = (await session.settings.get(
+        "key_term_frequency",
+        "high"
+      )) as "off" | "standard" | "high";
+      session.logger.info(`Initial key term frequency: ${initialFrequency}`);
+
+      // Create response handler for this session
+      const responseHandler = new LectureResponseHandler(
+        session,
+        initialFrequency
       );
 
-      // Initialize the session with the main menu
+      // Show main menu
       await this.showMainMenu(session);
 
-      // Set up event listeners
-      await this.setupEventListeners(session, sessionId, userId);
+      // Set up event listeners with response handler
+      await this.setupEventListeners(
+        session,
+        sessionId,
+        userId,
+        responseHandler
+      );
 
-      console.log(
-        `✅ [${new Date().toISOString()}] Session setup complete: ${sessionId}`
-      );
+      // Setup transcription listener for real-time processing
+      await this.setupTranscriptionListener(session, responseHandler);
+
+      session.logger.info(`Session setup complete: ${sessionId}`);
     } catch (error) {
-      console.error(
-        `❌ [${new Date().toISOString()}] Session setup failed: ${sessionId}`,
-        error
+      session.logger.error(
+        error as any,
+        `❌ Session setup failed: ${sessionId}`,
+        {
+          userId,
+          sessionId,
+        }
       );
-      // Try to show a simple error message
+
       try {
-        await session.layouts.showTextWall("App Error - Please restart");
+        await session.layouts.showTextWall(
+          "🚫 App Error\n\nSession setup failed\nCheck logs for details\n\nPlease restart the application"
+        );
       } catch (displayError) {
-        console.error("Failed to display error message:", displayError);
+        session.logger.error(
+          displayError as any,
+          "💥 Failed to display error message:",
+          {
+            originalError:
+              error instanceof Error ? error.message : String(error),
+          }
+        );
       }
     }
   }
 
+  /**
+   * Show the main menu interface
+   */
   private async showMainMenu(session: AppSession): Promise<void> {
     try {
-      console.log(`📱 [${new Date().toISOString()}] Showing main menu`);
+      session.logger.info("📺 Displaying main menu");
 
-      // Try simple text first
-      await session.layouts.showTextWall("Lecture Assistant Ready");
+      const menuText =
+        "🎓 Lecture Assistant\n\nPress button or say 'start lecture' to begin\n\nReady to capture knowledge!";
 
-      console.log(
-        `✅ [${new Date().toISOString()}] Main menu displayed successfully`
-      );
+      session.logger.debug("Menu text to display: " + menuText);
+      await session.layouts.showTextWall(menuText);
+
+      session.logger.info("✅ Main menu displayed successfully");
     } catch (error) {
-      console.error(
-        `❌ [${new Date().toISOString()}] Failed to show main menu:`,
-        error
-      );
+      session.logger.error(error as any, "❌ Failed to show main menu");
 
-      // Try even simpler fallback
+      // Fallback to simple text
       try {
-        await session.layouts.showTextWall("Ready");
+        session.logger.info("🔄 Attempting fallback display...");
+        await session.layouts.showTextWall("🎓 Ready");
+        session.logger.info("✅ Fallback display successful");
       } catch (fallbackError) {
-        console.error(`❌ Fallback display also failed:`, fallbackError);
+        session.logger.error(
+          fallbackError as any,
+          "💥 Fallback display failed",
+          {
+            originalError:
+              error instanceof Error ? error.message : String(error),
+          }
+        );
       }
 
       throw error;
     }
   }
 
+  /**
+   * Setup event listeners for user interactions
+   */
   private async setupEventListeners(
     session: AppSession,
     sessionId: string,
-    userId: string
+    userId: string,
+    responseHandler: LectureResponseHandler
   ): Promise<void> {
     // Listen for button presses
     session.on("button", async (buttonData: ButtonEvent) => {
-      console.log(
-        `🔘 [${new Date().toISOString()}] Button ${
-          buttonData.action
-        } - Session: ${sessionId}`
+      session.logger.info(
+        `Button ${buttonData.action} pressed - Session: ${sessionId}`
       );
+
       if (buttonData.action === "press") {
-        await this.toggleLectureMode(session, sessionId, userId);
+        await this.toggleLectureMode(
+          session,
+          sessionId,
+          userId,
+          responseHandler
+        );
       }
     });
 
     // Listen for voice commands
     session.on("voice", async (voiceData: VoiceEvent) => {
-      console.log(
-        `🎤 [${new Date().toISOString()}] Voice command: "${
-          voiceData.transcript
-        }" - Session: ${sessionId}`
+      session.logger.info(
+        `Voice command: "${voiceData.transcript}" - Session: ${sessionId}`
       );
+
       const command = voiceData.transcript.toLowerCase();
       if (
         command.includes("start lecture") ||
         command.includes("begin lecture")
       ) {
-        await this.startLectureMode(session, sessionId, userId);
+        await this.startLectureMode(
+          session,
+          sessionId,
+          userId,
+          responseHandler
+        );
       } else if (
         command.includes("stop lecture") ||
         command.includes("end lecture")
       ) {
-        await this.stopLectureMode(session, sessionId, userId);
+        await this.stopLectureMode(session, sessionId, userId, responseHandler);
       }
     });
 
-    // Listen for head movement
+    // Listen for sensor data (head movements)
     session.on("sensors", async (sensorData: SensorEvent) => {
-      if (this.lectureManager.isInLectureMode()) {
-        console.log(
-          `📱 [${new Date().toISOString()}] Sensor data received - Session: ${sessionId}`
-        );
-        await this.handleHeadMovement(session, sensorData);
+      if (responseHandler.isLectureModeActive()) {
+        session.logger.debug(`Sensor data received - Session: ${sessionId}`);
+        await responseHandler.handleHeadTilt(sensorData);
       }
+    });
+
+    // Clean up listeners when session ends
+    session.events.onDisconnected(() => {
+      session.logger.info(`Session ${sessionId} disconnected - cleaning up`);
+      responseHandler.reset();
     });
   }
 
+  /**
+   * Setup real-time transcription listener
+   */
+  private async setupTranscriptionListener(
+    session: AppSession,
+    responseHandler: LectureResponseHandler
+  ): Promise<void> {
+    // State for managing transcription buffering
+    let currentUtteranceBuffer = "";
+    let utteranceTimer: NodeJS.Timeout | null = null;
+    const UTTERANCE_TIMEOUT_MS = 3000;
+
+    // Function to process the buffer and reset state
+    const processBufferAndReset = (reason: "isFinal" | "timeout") => {
+      if (utteranceTimer) {
+        clearTimeout(utteranceTimer);
+        utteranceTimer = null;
+      }
+
+      const textToProcess = currentUtteranceBuffer.trim();
+      if (textToProcess.length > 0 && responseHandler.isLectureModeActive()) {
+        session.logger.info(
+          `Processing utterance (${reason}): "${textToProcess}"`
+        );
+        const timestamp = Date.now();
+        responseHandler
+          .processTranscript(textToProcess, timestamp)
+          .catch((error) => {
+            session.logger.error(`Failed to process transcript: ${error}`);
+          });
+      }
+
+      currentUtteranceBuffer = "";
+    };
+
+    // Listen for real-time speech transcriptions
+    const unsubscribe = session.events.onTranscription((data) => {
+      session.logger.debug(
+        `Transcription: "${data.text}", isFinal: ${data.isFinal}`
+      );
+
+      const isNewUtterance =
+        currentUtteranceBuffer.length === 0 && data.text.trim().length > 0;
+
+      // Update buffer with latest text
+      currentUtteranceBuffer = data.text;
+
+      if (isNewUtterance) {
+        // Start timeout for max utterance duration
+        utteranceTimer = setTimeout(
+          () => processBufferAndReset("timeout"),
+          UTTERANCE_TIMEOUT_MS
+        );
+      }
+
+      if (data.isFinal) {
+        // Process complete utterance
+        processBufferAndReset("isFinal");
+      }
+    });
+
+    // Cleanup transcription listener
+    this.addCleanupHandler(() => {
+      if (utteranceTimer) clearTimeout(utteranceTimer);
+      unsubscribe();
+    });
+  }
+
+  /**
+   * Toggle lecture mode on/off
+   */
   private async toggleLectureMode(
     session: AppSession,
     sessionId: string,
-    userId: string
+    userId: string,
+    responseHandler: LectureResponseHandler
   ): Promise<void> {
-    if (this.lectureManager.isInLectureMode()) {
-      await this.stopLectureMode(session, sessionId, userId);
+    if (responseHandler.isLectureModeActive()) {
+      await this.stopLectureMode(session, sessionId, userId, responseHandler);
     } else {
-      await this.startLectureMode(session, sessionId, userId);
+      await this.startLectureMode(session, sessionId, userId, responseHandler);
     }
   }
 
+  /**
+   * Start lecture mode
+   */
   private async startLectureMode(
     session: AppSession,
     sessionId: string,
-    userId: string
+    userId: string,
+    responseHandler: LectureResponseHandler
   ): Promise<void> {
-    console.log("Starting lecture mode");
+    session.logger.info("Starting lecture mode");
 
-    // Start lecture recording and processing
-    await this.lectureManager.startLecture(sessionId);
+    try {
+      // Start lecture with response handler
+      await responseHandler.startLecture(sessionId);
 
-    // Show lecture mode UI
-    await session.layouts.showTextWall(
-      "🎓 Lecture Mode Active\n\nLive captions will appear here...\n\nTilt head to see key terms"
-    );
+      // Show lecture mode activation message
+      await session.layouts.showTextWall(
+        "🎓 Lecture Mode Active\n\nListening for speech...\n\nTilt head to see key terms",
+        { durationMs: 3000 }
+      );
 
-    // Start live captioning
-    await this.startLiveCaptioning(session);
+      session.logger.info("Lecture mode started successfully");
+    } catch (error) {
+      session.logger.error("Failed to start lecture mode:", error as any);
+      await session.layouts.showTextWall("❌ Failed to start lecture mode");
+    }
   }
 
+  /**
+   * Stop lecture mode
+   */
   private async stopLectureMode(
     session: AppSession,
     sessionId: string,
-    userId: string
+    userId: string,
+    responseHandler: LectureResponseHandler
   ): Promise<void> {
-    console.log("Stopping lecture mode");
+    session.logger.info("Stopping lecture mode");
 
-    // Stop lecture recording
-    const lectureData = await this.lectureManager.stopLecture();
+    try {
+      // Stop lecture and get results
+      const lectureResults = await responseHandler.stopLecture();
 
-    // Extract and save key terms
-    if (lectureData) {
-      const keyTerms = await this.keyTermExtractor.extractKeyTerms(
-        lectureData.transcript
+      // Save results to database
+      if (lectureResults.keyTerms.length > 0) {
+        await this.databaseManager.saveKeyTerms(
+          sessionId,
+          userId,
+          lectureResults.keyTerms
+        );
+      }
+
+      // Save lecture session
+      const lectureSession = {
+        id: sessionId,
+        userId,
+        startTime: new Date(Date.now() - lectureResults.duration * 1000),
+        endTime: new Date(),
+        duration: lectureResults.duration,
+        transcript: "", // Would be populated with full transcript
+        keyTermsCount: lectureResults.keyTerms.length,
+      };
+
+      await this.databaseManager.saveLectureSession(lectureSession);
+
+      session.logger.info(
+        `Lecture completed - Duration: ${lectureResults.duration}s, Key terms: ${lectureResults.keyTerms.length}`
       );
-      await this.databaseManager.saveKeyTerms(sessionId, userId, keyTerms);
 
-      await session.layouts.showTextWall(
-        `📚 Lecture Complete!\n\n` +
-          `Extracted ${keyTerms.length} key terms\n` +
-          `Duration: ${Math.round(lectureData.duration / 60)} minutes\n\n` +
-          `Press button to start new lecture`
-      );
+      // Return to main menu after delay
+      setTimeout(async () => {
+        await this.showMainMenu(session);
+      }, 5000);
+    } catch (error) {
+      session.logger.error("Failed to stop lecture mode:", error as any);
+      await session.layouts.showTextWall("❌ Error stopping lecture");
+
+      // Still try to return to main menu
+      setTimeout(async () => {
+        await this.showMainMenu(session);
+      }, 3000);
     }
-
-    // Return to main menu after 3 seconds
-    setTimeout(async () => {
-      await this.showMainMenu(session);
-    }, 3000);
-  }
-
-  private async startLiveCaptioning(session: AppSession): Promise<void> {
-    // Start continuous speech recognition for live captions
-    this.lectureManager.onTranscriptUpdate((transcript: string) => {
-      // Update the display with live captions
-      session.layouts.showTextWall(
-        "🎓 Lecture Mode - Live Captions\n\n" +
-          transcript.split(" ").slice(-50).join(" ") + // Show last 50 words
-          "\n\n(Tilt head to see key terms)"
-      );
-    });
-  }
-
-  private async handleHeadMovement(
-    session: AppSession,
-    sensorData: SensorEvent
-  ): Promise<void> {
-    // Check if head is tilted (simplified logic)
-    const isHeadTilted = this.isHeadTilted(sensorData);
-
-    if (isHeadTilted && !this.lectureManager.isShowingKeyTerms()) {
-      await this.showRecentKeyTerms(session);
-    } else if (!isHeadTilted && this.lectureManager.isShowingKeyTerms()) {
-      await this.showLiveCaptions(session);
-    }
-  }
-
-  private isHeadTilted(sensorData: SensorEvent): boolean {
-    // Simple head tilt detection based on accelerometer data
-    // This would need to be calibrated based on actual sensor data format
-    if (sensorData.accelerometer) {
-      const { x, y, z } = sensorData.accelerometer;
-      const tiltThreshold = 0.3; // Adjust based on testing
-      return Math.abs(x) > tiltThreshold || Math.abs(y) > tiltThreshold;
-    }
-    return false;
-  }
-
-  private async showRecentKeyTerms(session: AppSession): Promise<void> {
-    this.lectureManager.setShowingKeyTerms(true);
-
-    const recentKeyTerms = await this.keyTermExtractor.getRecentKeyTerms(3);
-
-    let display = "🔑 Recent Key Terms\n\n";
-
-    if (recentKeyTerms.length === 0) {
-      display += "No key terms detected yet...\nKeep listening!";
-    } else {
-      recentKeyTerms.forEach((term: any, index: number) => {
-        display += `${index + 1}. ${term.term}\n`;
-        display += `   ${term.definition}\n\n`;
-      });
-    }
-
-    display += "\n(Straighten head for live captions)";
-
-    await session.layouts.showTextWall(display);
-  }
-
-  private async showLiveCaptions(session: AppSession): Promise<void> {
-    this.lectureManager.setShowingKeyTerms(false);
-
-    const currentTranscript = this.lectureManager.getCurrentTranscript();
-    await session.layouts.showTextWall(
-      "🎓 Lecture Mode - Live Captions\n\n" +
-        currentTranscript.split(" ").slice(-50).join(" ") +
-        "\n\n(Tilt head to see key terms)"
-    );
   }
 }
 
