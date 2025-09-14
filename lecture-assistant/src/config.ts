@@ -16,7 +16,7 @@ export const DISPLAY_DURATION_MS = {
   SHORT: 2000,
   MEDIUM: 4000,
   LONG: 6000,
-  KEYWORD_DEFINITION: 8000, // Duration to show keyword definitions
+  KEYWORD_DEFINITION: 6000, // Duration to show keyword definitions
 };
 
 // Keyword generation settings

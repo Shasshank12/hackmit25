@@ -5,8 +5,9 @@ import * as path from "path";
 import { TopicCollector } from "./agents/topic-collector";
 import { KeywordGenerator } from "./agents/keyword-generator";
 import { TranscriptToNotesProcessor } from "./transcript-to-notes";
-import { LectureTopic } from "./types";
+import { LectureTopic, FlashcardSet } from "./types";
 import { DISPLAY_DURATION_MS } from "./config";
+import { QuizManager } from "./quiz/quiz-manager";
 
 // it can't capture multi word terms
 // more validation of subject matter
@@ -23,6 +24,9 @@ import { DISPLAY_DURATION_MS } from "./config";
 // add a preparing... text when generating keywords
 // do something with dashboard?
 // why is it skipping subject
+// doesn't allow you to properly exit flashcard mode
+// definnitions are far too long
+// saying topics is impermissive
 /**
  * Simple Lecture Assistant - Records transcripts to file
  */
@@ -41,8 +45,16 @@ class LectureAssistantApp extends AppServer {
   private currentTopic: LectureTopic | null = null;
   private keywordDefinitions: Map<string, string> = new Map();
   private isShowingDefinition: boolean = false;
+  private sortedKeywords: [string, string][] = [];
+  private keywordCache: Map<string, { isMatch: boolean; matchedText: string }> =
+    new Map();
+  private lastProcessedText: string = "";
+  private recentKeywords: Set<string> = new Set();
   private notesDir: string = path.join(process.cwd(), "notes");
   private flashcardsDir: string = path.join(process.cwd(), "flashcards");
+  private currentMode: "menu" | "flashcard" = "menu";
+  private quizManager: QuizManager | null = null;
+  private isTransitioning: boolean = false;
 
   constructor() {
     const config: AppServerConfig = {
@@ -102,13 +114,14 @@ class LectureAssistantApp extends AppServer {
    */
   private async showMainMenu(session: AppSession): Promise<void> {
     try {
+      this.currentMode = "menu";
       const menuText =
-        "🎓 Lecture Assistant\n\nSay 'start lecture' or 'begin lecture' to begin\n\nReady to record!";
+        "Lecture Assistant\n\nSay 'lecture mode' to start recording\nSay 'card mode' or 'flashcard mode' to study\n\nReady!";
       await session.layouts.showTextWall(menuText);
       session.logger.info("✅ Main menu displayed");
     } catch (error) {
       session.logger.error(error as any, "❌ Failed to show main menu");
-      await session.layouts.showTextWall("🎓 Ready");
+      await session.layouts.showTextWall("Ready");
     }
   }
 
@@ -150,7 +163,24 @@ class LectureAssistantApp extends AppServer {
       if (data.isFinal) {
         const command = data.text.toLowerCase();
 
-        // Check for voice commands first
+        // Skip processing if we're transitioning between modes
+        if (this.isTransitioning) {
+          return;
+        }
+
+        // Check for flashcard mode command first
+        if (
+          this.currentMode === "menu" &&
+          this.isFlashcardModeCommand(command)
+        ) {
+          session.logger.info(
+            `🃏 Flashcard mode command detected: "${data.text}"`
+          );
+          this.startFlashcardMode(session);
+          return;
+        }
+
+        // Check for start lecture commands (includes "lecture mode")
         if (!this.isRecording && this.isStartLectureCommand(command)) {
           session.logger.info(`🚀 Voice command detected: "${data.text}"`);
           this.startRecording(session);
@@ -163,16 +193,48 @@ class LectureAssistantApp extends AppServer {
           return;
         }
 
+        // Handle flashcard mode commands
+        if (this.currentMode === "flashcard") {
+          // Always allow exit commands, even during active quiz
+          if (this.isExitFlashcardCommand(command)) {
+            session.logger.info(
+              `🚪 Exit flashcard command detected: "${data.text}"`
+            );
+
+            // If quiz is active, stop it first
+            if (this.quizManager && this.quizManager.isActive()) {
+              session.logger.info(`🛑 Stopping active quiz before exit...`);
+              await this.quizManager.stopQuiz();
+            }
+
+            this.exitFlashcardMode(session);
+            return;
+          }
+
+          // Skip other processing if quiz is actively running to avoid interference
+          if (this.quizManager && this.quizManager.isActive()) {
+            session.logger.info(
+              `🎯 Quiz active - main listener skipping non-exit transcription processing`
+            );
+            return;
+          }
+        }
+
         // If recording, add to transcript and check for keywords
         if (this.isRecording) {
-          const timestamp = new Date().toISOString();
-          const transcriptLine = `[${timestamp}] ${data.text}\n`;
+          if (data.isFinal) {
+            const timestamp = new Date().toISOString();
+            const transcriptLine = `[${timestamp}] ${data.text}\n`;
+            this.currentTranscript += transcriptLine;
+            session.logger.info(`Added to transcript: "${data.text}"`);
+          }
 
-          this.currentTranscript += transcriptLine;
-          session.logger.info(`Added to transcript: "${data.text}"`);
-
-          // Check for keywords and display definitions
-          await this.checkForKeywords(session, data.text);
+          // Check for keywords in real-time (both partial and final transcriptions)
+          await this.checkForKeywordsStreaming(
+            session,
+            data.text,
+            data.isFinal
+          );
         } else {
           // Handle topic collection if active
           if (this.topicCollector) {
@@ -187,6 +249,58 @@ class LectureAssistantApp extends AppServer {
     });
 
     session.logger.info("✅ Transcription listener setup complete");
+  }
+
+  /**
+   * Start flashcard mode
+   */
+  private async startFlashcardMode(session: AppSession): Promise<void> {
+    // Set transitioning flag to prevent race conditions
+    this.isTransitioning = true;
+    this.currentMode = "flashcard";
+
+    // Get available topics from flashcard folders
+    const availableTopics = await this.getAvailableTopics();
+
+    if (availableTopics.length === 0) {
+      await session.layouts.showTextWall(
+        "No Flashcards Found\n\nNo flashcard sets available.\nComplete some lectures first!\n\nReturning to main menu..."
+      );
+      setTimeout(() => {
+        this.showMainMenu(session);
+        this.isTransitioning = false;
+      }, 3000);
+      return;
+    }
+
+    // Show topic selection
+    await this.showTopicSelection(session, availableTopics);
+    // Clear transitioning flag after topic selection is shown
+    this.isTransitioning = false;
+  }
+
+  /**
+   * Exit flashcard mode and return to main menu
+   */
+  private async exitFlashcardMode(session: AppSession): Promise<void> {
+    // Set transitioning flag to prevent re-entry
+    this.isTransitioning = true;
+
+    if (this.quizManager && this.quizManager.isActive()) {
+      await this.quizManager.stopQuiz();
+    }
+    this.quizManager = null;
+    this.currentMode = "menu";
+
+    await session.layouts.showTextWall(
+      "Exiting Flashcard Mode\n\nReturning to main menu..."
+    );
+
+    setTimeout(() => {
+      this.showMainMenu(session);
+      // Clear transitioning flag after showing menu
+      this.isTransitioning = false;
+    }, 2000);
   }
 
   /**
@@ -207,6 +321,10 @@ class LectureAssistantApp extends AppServer {
 
     // Clear previous keyword definitions for fresh start
     this.keywordDefinitions.clear();
+    this.keywordCache.clear();
+    this.sortedKeywords = [];
+    this.recentKeywords.clear();
+    this.lastProcessedText = "";
     session.logger.info("🧹 Cleared previous keyword definitions");
 
     // Start topic collection
@@ -270,6 +388,10 @@ class LectureAssistantApp extends AppServer {
 
       // Save mappings to JSON file
       await this.saveKeywordMappings();
+
+      // Build sorted keywords cache for faster lookup
+      this.buildKeywordCache();
+
       session.logger.info("✅ All keyword mappings saved");
 
       // Show completion message briefly before starting recording
@@ -344,11 +466,6 @@ class LectureAssistantApp extends AppServer {
 
       // Process transcript to generate notes and flashcards
       await this.processTranscriptToNotesAndFlashcards(session);
-
-      // Return to main menu after delay
-      setTimeout(async () => {
-        await this.showMainMenu(session);
-      }, 8000); // Extended delay to account for processing time
     } catch (error) {
       session.logger.error("Failed to save transcript:", error as any);
       await session.layouts.showTextWall("❌ Error saving transcript");
@@ -446,11 +563,9 @@ class LectureAssistantApp extends AppServer {
         return;
       }
 
-      // Show processing start message
-      await session.layouts.showReferenceCard(
-        "🤖 Processing Transcript",
-        "Generating study notes and flashcards from your lecture...",
-        { durationMs: 3000 }
+      // Show initial processing message
+      await session.layouts.showTextWall(
+        "Processing Lecture...\n\nPreparing to generate notes and flashcards\n\nPlease wait, this may take a moment"
       );
 
       // Ensure output directories exist
@@ -459,23 +574,41 @@ class LectureAssistantApp extends AppServer {
       // Find the most recent transcript
       const mostRecentTranscript = await this.findMostRecentTranscript();
       if (!mostRecentTranscript) {
-        await session.layouts.showReferenceCard(
-          "❌ No Transcript Found",
-          "Could not find a transcript file to process",
-          { durationMs: 3000 }
+        await session.layouts.showTextWall(
+          "No Transcript Found\n\nCould not find a transcript file to process\n\nReturning to main menu..."
         );
+        setTimeout(() => this.showMainMenu(session), 3000);
         return;
       }
 
       session.logger.info(`📖 Processing transcript: ${mostRecentTranscript}`);
 
-      // Generate custom output paths in separate folders
+      // Show progress: analyzing transcript
+      await session.layouts.showTextWall(
+        "Processing Lecture...\n\nAnalyzing transcript content\n\nGenerating study materials..."
+      );
+
+      // Generate custom output paths organized by topic
       const baseName = path.basename(mostRecentTranscript, ".txt");
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const notesPath = path.join(this.notesDir, `${baseName}_notes.md`);
+      const topicName =
+        this.currentTopic?.subject?.toLowerCase().replace(/\s+/g, "-") ||
+        "unknown";
+
+      // Ensure topic directories exist
+      const topicNotesDir = path.join(this.notesDir, topicName);
+      const topicFlashcardsDir = path.join(this.flashcardsDir, topicName);
+      await fs.promises.mkdir(topicNotesDir, { recursive: true });
+      await fs.promises.mkdir(topicFlashcardsDir, { recursive: true });
+
+      const notesPath = path.join(topicNotesDir, `${baseName}_notes.md`);
       const flashcardsPath = path.join(
-        this.flashcardsDir,
+        topicFlashcardsDir,
         `${baseName}_flashcards.json`
+      );
+
+      // Show progress: processing with AI
+      await session.layouts.showTextWall(
+        "Processing Lecture...\n\nAI is analyzing your lecture content\n\nThis may take 30-60 seconds..."
       );
 
       // Process transcript with custom options
@@ -490,6 +623,11 @@ class LectureAssistantApp extends AppServer {
           saveNotes: false, // We'll save manually to custom locations
           saveFlashcards: false,
         }
+      );
+
+      // Show progress: saving files
+      await session.layouts.showTextWall(
+        "Processing Lecture...\n\nSaving notes and flashcards to files\n\nAlmost complete..."
       );
 
       // Save to custom locations
@@ -523,50 +661,180 @@ ${result.notes.detailedNotes}
       session.logger.info(`🃏 Flashcards saved to: ${flashcardsPath}`);
 
       // Show completion message
-      await session.layouts.showReferenceCard(
-        "✅ Processing Complete!",
-        `Generated ${result.notes.keyPoints.length} key points and ${result.flashcards.cards.length} flashcards\n\nFiles saved to notes/ and flashcards/ folders`,
-        { durationMs: 5000 }
+      await session.layouts.showTextWall(
+        `Processing Complete!\n\nGenerated ${result.notes.keyPoints.length} key points and ${result.flashcards.cards.length} flashcards\n\nFiles saved successfully`
       );
+
+      // Return to main menu after showing completion
+      setTimeout(() => this.showMainMenu(session), 5000);
     } catch (error) {
       session.logger.error("Failed to process transcript:", error as any);
-      await session.layouts.showReferenceCard(
-        "❌ Processing Failed",
-        "Could not generate notes and flashcards. Please check the logs.",
-        { durationMs: 3000 }
+      await session.layouts.showTextWall(
+        "Processing Failed\n\nCould not generate notes and flashcards\n\nPlease check the logs and try again"
       );
+      setTimeout(() => this.showMainMenu(session), 4000);
     }
   }
 
   /**
-   * Check for keywords in the transcribed text and display definitions
+   * Build keyword cache for faster lookup
+   */
+  private buildKeywordCache(): void {
+    // Sort keywords by length (longest first) to prioritize multi-word terms
+    this.sortedKeywords = Array.from(this.keywordDefinitions.entries()).sort(
+      ([a], [b]) => b.length - a.length
+    );
+
+    // Clear the match cache when rebuilding
+    this.keywordCache.clear();
+
+    console.log(
+      `📚 Built keyword cache with ${this.sortedKeywords.length} keywords`
+    );
+  }
+
+  /**
+   * Check for keywords in streaming transcription (real-time)
+   */
+  private async checkForKeywordsStreaming(
+    session: AppSession,
+    text: string,
+    isFinal: boolean
+  ): Promise<void> {
+    if (this.sortedKeywords.length === 0 || this.isShowingDefinition) {
+      return;
+    }
+
+    // Process all speech immediately for instant keyword detection
+    const startTime = Date.now();
+    const normalizedText = this.normalizeText(text);
+
+    // Process ALL text immediately for maximum responsiveness
+    // Skip only if text is too short to contain meaningful keywords
+    if (normalizedText.length < 2) return;
+
+    session.logger.info(
+      `🔍 Processing ${isFinal ? "FINAL" : "PARTIAL"} text: "${text}" (${
+        text.length
+      } chars)`
+    );
+
+    let textToProcess = normalizedText;
+
+    // Update last processed text
+    if (!isFinal) {
+      this.lastProcessedText = normalizedText;
+    } else {
+      this.lastProcessedText = "";
+      // Clear recent keywords for final text to allow re-detection
+      setTimeout(() => this.recentKeywords.clear(), 10000); // Clear after 10 seconds
+    }
+
+    await this.detectKeywordsInText(session, textToProcess);
+
+    const processingTime = Date.now() - startTime;
+    session.logger.info(
+      `⚡ Keyword detection took ${processingTime}ms for text: "${text}"`
+    );
+  }
+
+  /**
+   * Check for keywords in the transcribed text and display definitions (optimized)
    */
   private async checkForKeywords(
     session: AppSession,
     text: string
   ): Promise<void> {
-    if (this.keywordDefinitions.size === 0 || this.isShowingDefinition) {
+    if (this.sortedKeywords.length === 0 || this.isShowingDefinition) {
       return; // No keywords to check or already showing a definition
     }
 
-    const normalizedText = this.normalizeText(text);
+    await this.detectKeywordsInText(session, this.normalizeText(text));
+  }
 
-    // Sort keywords by length (longest first) to prioritize multi-word terms
-    const sortedKeywords = Array.from(this.keywordDefinitions.entries()).sort(
-      ([a], [b]) => b.length - a.length
-    );
-
-    // Check for keyword matches with permissive matching
-    for (const [keyword, definition] of sortedKeywords) {
-      const matchResult = this.isPermissiveMatch(normalizedText, keyword);
-      if (matchResult.isMatch) {
-        session.logger.info(
-          `🔍 Keyword detected: "${keyword}" (matched "${matchResult.matchedText}")`
+  /**
+   * Core keyword detection with sliding window for continuous speech
+   */
+  private async detectKeywordsInText(
+    session: AppSession,
+    normalizedText: string
+  ): Promise<void> {
+    // Check cache first for this exact text
+    const cacheKey = normalizedText;
+    if (this.keywordCache.has(cacheKey)) {
+      const cachedResult = this.keywordCache.get(cacheKey)!;
+      if (cachedResult.isMatch) {
+        const matchedKeyword = this.sortedKeywords.find(
+          ([keyword]) =>
+            this.normalizeText(keyword) === cachedResult.matchedText ||
+            keyword.toLowerCase() === cachedResult.matchedText
         );
-        await this.displayKeywordDefinition(session, keyword, definition);
-        break; // Only show one definition at a time
+        if (matchedKeyword && !this.recentKeywords.has(matchedKeyword[0])) {
+          this.recentKeywords.add(matchedKeyword[0]);
+          await this.displayKeywordDefinition(
+            session,
+            matchedKeyword[0],
+            matchedKeyword[1]
+          );
+        }
+      }
+      return;
+    }
+
+    // Sliding window approach for continuous speech
+    const words = normalizedText.split(" ").filter((word) => word.length > 0);
+
+    // Try different window sizes to catch multi-word keywords
+    for (
+      let windowSize = Math.min(5, words.length);
+      windowSize >= 1;
+      windowSize--
+    ) {
+      for (let i = 0; i <= words.length - windowSize; i++) {
+        const window = words.slice(i, i + windowSize).join(" ");
+
+        // Fast keyword matching for this window
+        for (const [keyword, definition] of this.sortedKeywords) {
+          if (this.recentKeywords.has(keyword)) continue; // Skip recently shown keywords
+
+          const normalizedKeyword = this.normalizeText(keyword);
+
+          // Fast exact match check
+          if (
+            window === normalizedKeyword ||
+            window.includes(normalizedKeyword)
+          ) {
+            session.logger.info(
+              `🔍 Keyword detected: "${keyword}" in window: "${window}"`
+            );
+            this.recentKeywords.add(keyword);
+            this.keywordCache.set(cacheKey, {
+              isMatch: true,
+              matchedText: normalizedKeyword,
+            });
+            await this.displayKeywordDefinition(session, keyword, definition);
+            return; // Found a match, stop processing
+          }
+
+          // Only do expensive permissive matching for multi-word terms
+          if (normalizedKeyword.includes(" ") && windowSize > 1) {
+            const matchResult = this.isPermissiveMatch(window, keyword);
+            if (matchResult.isMatch) {
+              session.logger.info(
+                `🔍 Keyword detected: "${keyword}" (matched "${matchResult.matchedText}") in window: "${window}"`
+              );
+              this.recentKeywords.add(keyword);
+              this.keywordCache.set(cacheKey, matchResult);
+              await this.displayKeywordDefinition(session, keyword, definition);
+              return; // Found a match, stop processing
+            }
+          }
+        }
       }
     }
+
+    // Cache negative result to avoid re-checking
+    this.keywordCache.set(cacheKey, { isMatch: false, matchedText: "" });
   }
 
   /**
@@ -679,8 +947,13 @@ ${result.notes.detailedNotes}
       // Use TextWall layout for reliable display
       const textWallContent = `💡 ${keyword.toUpperCase()}\n\n${displayDefinition}`;
 
+      const displayTime = Date.now();
       session.logger.info(
-        `📖 Displaying definition - Keyword: "${keyword}", Length: ${displayDefinition.length} chars`
+        `📖 [${new Date(
+          displayTime
+        ).toLocaleTimeString()}] Displaying definition - Keyword: "${keyword}", Length: ${
+          displayDefinition.length
+        } chars`
       );
       session.logger.info(`📖 Definition content: "${displayDefinition}"`);
 
@@ -752,6 +1025,14 @@ ${result.notes.detailedNotes}
       "let's start the lecture",
       "let's begin lecture",
       "let's begin the lecture",
+      // Lecture mode commands
+      "lecture mode",
+      "start lecture mode",
+      "begin lecture mode",
+      "enter lecture mode",
+      "lecture",
+      "start lecture",
+      "begin lecture",
       // Variations
       "start recording",
       "begin recording",
@@ -801,6 +1082,380 @@ ${result.notes.detailedNotes}
     ];
 
     return stopPatterns.some((pattern) => command.includes(pattern));
+  }
+
+  /**
+   * Check if command is a flashcard mode command
+   */
+  private isFlashcardModeCommand(command: string): boolean {
+    const flashcardModePatterns = [
+      // Direct commands
+      "flashcard mode",
+      "flashcards mode",
+      "flash card mode",
+      "flash cards mode",
+      "card mode",
+      "cards mode",
+      // Variations with start/begin
+      "start flashcard mode",
+      "start flashcards mode",
+      "start flash card mode",
+      "start flash cards mode",
+      "start card mode",
+      "start cards mode",
+      "begin flashcard mode",
+      "begin flashcards mode",
+      "begin flash card mode",
+      "begin flash cards mode",
+      "begin card mode",
+      "begin cards mode",
+      "enter flashcard mode",
+      "enter flashcards mode",
+      "enter flash card mode",
+      "enter flash cards mode",
+      "enter card mode",
+      "enter cards mode",
+      // Alternative names
+      "quiz mode",
+      "study mode",
+      "test mode",
+      "review mode",
+      "flashcard",
+      "flashcards",
+      "flash card",
+      "flash cards",
+      "start flashcard",
+      "start flashcards",
+      "begin flashcard",
+      "begin flashcards",
+      "let's do flashcards",
+      "let's study flashcards",
+      "time for flashcards",
+    ];
+    return flashcardModePatterns.some((pattern) => command.includes(pattern));
+  }
+
+  /**
+   * Check if command is an exit flashcard command
+   */
+  private isExitFlashcardCommand(command: string): boolean {
+    const exitPatterns = [
+      // Direct exit commands
+      "exit flashcard",
+      "exit flashcards",
+      "exit flash card",
+      "exit flash cards",
+      "exit card",
+      "exit cards",
+      "stop flashcard",
+      "stop flashcards",
+      "stop flash card",
+      "stop flash cards",
+      "stop card",
+      "stop cards",
+      "end flashcard",
+      "end flashcards",
+      "end flash card",
+      "end flash cards",
+      "end card",
+      "end cards",
+      "quit flashcard",
+      "quit flashcards",
+      "quit flash card",
+      "quit flash cards",
+      "quit card",
+      "quit cards",
+      "finish flashcard",
+      "finish flashcards",
+      "done with flashcard",
+      "done with flashcards",
+      // Navigation commands
+      "back to menu",
+      "main menu",
+      "go back",
+      "return to menu",
+      "home",
+      "exit",
+      "quit",
+      "stop",
+      "done",
+      "finished",
+      "that's it",
+      "we're done",
+      "cancel",
+    ];
+    return exitPatterns.some((pattern) => command.includes(pattern));
+  }
+
+  /**
+   * Find matching topic with permissive matching
+   */
+  private findMatchingTopic(
+    userInput: string,
+    availableTopics: string[]
+  ): string | undefined {
+    // Normalize user input: lowercase, remove punctuation, normalize spaces
+    const normalizeText = (text: string): string => {
+      return text
+        .toLowerCase()
+        .replace(/[^\w\s]/g, " ") // Replace punctuation with spaces
+        .replace(/\s+/g, " ") // Normalize multiple spaces to single space
+        .trim();
+    };
+
+    const normalizedInput = normalizeText(userInput);
+
+    // Try different matching strategies
+    for (const topic of availableTopics) {
+      const normalizedTopic = normalizeText(topic);
+
+      // Strategy 1: Exact match after normalization
+      if (normalizedInput === normalizedTopic) {
+        return topic;
+      }
+
+      // Strategy 2: Input contains topic or topic contains input
+      if (
+        normalizedInput.includes(normalizedTopic) ||
+        normalizedTopic.includes(normalizedInput)
+      ) {
+        return topic;
+      }
+
+      // Strategy 3: Word-by-word matching
+      const inputWords = normalizedInput
+        .split(" ")
+        .filter((word) => word.length > 0);
+      const topicWords = normalizedTopic
+        .split(" ")
+        .filter((word) => word.length > 0);
+
+      // Check if all input words are found in topic words (or vice versa for shorter inputs)
+      if (inputWords.length <= topicWords.length) {
+        const allInputWordsFound = inputWords.every((inputWord) =>
+          topicWords.some(
+            (topicWord) =>
+              topicWord.includes(inputWord) || inputWord.includes(topicWord)
+          )
+        );
+        if (allInputWordsFound) {
+          return topic;
+        }
+      }
+
+      // Strategy 4: Check if most topic words are in input (for longer inputs)
+      if (inputWords.length > topicWords.length) {
+        const matchingWords = topicWords.filter((topicWord) =>
+          inputWords.some(
+            (inputWord) =>
+              inputWord.includes(topicWord) || topicWord.includes(inputWord)
+          )
+        );
+        // If most topic words match, consider it a match
+        if (matchingWords.length >= Math.ceil(topicWords.length * 0.7)) {
+          return topic;
+        }
+      }
+
+      // Strategy 5: Partial matching for common abbreviations/variations
+      const commonMappings: { [key: string]: string[] } = {
+        math: ["mathematics", "maths"],
+        mathematics: ["math", "maths"],
+        history: ["hist"],
+        physics: ["phys"],
+        chemistry: ["chem"],
+        biology: ["bio"],
+        "computer science": ["cs", "comp sci", "compsci"],
+        "american history": ["american-history", "us-history", "us history"],
+      };
+
+      // Check if input matches any common variations
+      for (const [key, variations] of Object.entries(commonMappings)) {
+        if (
+          normalizedInput.includes(key) ||
+          variations.some((v) => normalizedInput.includes(v))
+        ) {
+          if (
+            normalizedTopic.includes(key) ||
+            variations.some((v) => normalizedTopic.includes(v))
+          ) {
+            return topic;
+          }
+        }
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Get available topics from flashcard directories
+   */
+  private async getAvailableTopics(): Promise<string[]> {
+    try {
+      const entries = await fs.promises.readdir(this.flashcardsDir, {
+        withFileTypes: true,
+      });
+      const topics = entries
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name);
+      return topics;
+    } catch (error) {
+      console.error("Error reading flashcard directories:", error);
+      return [];
+    }
+  }
+
+  /**
+   * Show topic selection for flashcard mode
+   */
+  private async showTopicSelection(
+    session: AppSession,
+    topics: string[]
+  ): Promise<void> {
+    const topicList = topics
+      .map(
+        (topic, index) =>
+          `${index + 1}. ${topic.charAt(0).toUpperCase() + topic.slice(1)}`
+      )
+      .join("\n");
+
+    await session.layouts.showTextWall(
+      `Choose a Topic\n\n${topicList}\n\nSay the topic name you want to study\nor say 'exit' to return to menu`
+    );
+
+    // Set up listener for topic selection
+    this.setupTopicSelectionListener(session, topics);
+  }
+
+  /**
+   * Setup listener for topic selection in flashcard mode
+   */
+  private setupTopicSelectionListener(
+    session: AppSession,
+    availableTopics: string[]
+  ): void {
+    const unsubscribe = session.events.onTranscription(async (data) => {
+      if (data.isFinal && data.text.trim().length > 0) {
+        const command = data.text.toLowerCase().trim();
+
+        // Check for exit command
+        if (this.isExitFlashcardCommand(command)) {
+          unsubscribe();
+          await this.exitFlashcardMode(session);
+          return;
+        }
+
+        // Find matching topic with permissive matching
+        const selectedTopic = this.findMatchingTopic(command, availableTopics);
+
+        if (selectedTopic) {
+          unsubscribe();
+          await this.startFlashcardQuiz(session, selectedTopic);
+        } else {
+          // Invalid topic, show selection again
+          await session.layouts.showReferenceCard(
+            "Topic Not Found",
+            `"${data.text}" not found. Please try again.`,
+            { durationMs: 2000 }
+          );
+          setTimeout(() => {
+            this.showTopicSelection(session, availableTopics);
+          }, 2000);
+        }
+      }
+    });
+  }
+
+  /**
+   * Start flashcard quiz for selected topic
+   */
+  private async startFlashcardQuiz(
+    session: AppSession,
+    topic: string
+  ): Promise<void> {
+    try {
+      // Load flashcard set for the topic
+      const flashcardSet = await this.loadFlashcardSet(topic);
+
+      if (!flashcardSet || flashcardSet.cards.length === 0) {
+        await session.layouts.showTextWall(
+          `No Flashcards\n\nNo flashcards found for ${topic}\n\nReturning to topic selection...`
+        );
+        setTimeout(() => {
+          this.getAvailableTopics().then((topics) => {
+            this.showTopicSelection(session, topics);
+          });
+        }, 3000);
+        return;
+      }
+
+      // Initialize quiz manager and start quiz
+      this.quizManager = new QuizManager(session);
+      await this.quizManager.startQuiz(flashcardSet);
+
+      // Set up completion listener
+      this.setupQuizCompletionListener(session);
+    } catch (error) {
+      session.logger.error("Failed to start flashcard quiz:", error as any);
+      await session.layouts.showTextWall(
+        "Quiz Error\n\nFailed to load flashcards\n\nReturning to main menu..."
+      );
+      setTimeout(() => this.showMainMenu(session), 3000);
+    }
+  }
+
+  /**
+   * Load flashcard set for a topic
+   */
+  private async loadFlashcardSet(topic: string): Promise<FlashcardSet | null> {
+    try {
+      const topicDir = path.join(this.flashcardsDir, topic);
+      const files = await fs.promises.readdir(topicDir);
+      const flashcardFiles = files.filter((file) =>
+        file.endsWith("_flashcards.json")
+      );
+
+      if (flashcardFiles.length === 0) {
+        return null;
+      }
+
+      // Load the most recent flashcard file
+      const mostRecentFile = flashcardFiles.sort().pop()!;
+      const filePath = path.join(topicDir, mostRecentFile);
+      const content = await fs.promises.readFile(filePath, "utf8");
+      const flashcardSet: FlashcardSet = JSON.parse(content);
+
+      return flashcardSet;
+    } catch (error) {
+      console.error(`Error loading flashcard set for topic ${topic}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Setup quiz completion listener
+   */
+  private setupQuizCompletionListener(session: AppSession): void {
+    const checkCompletion = () => {
+      if (this.quizManager && !this.quizManager.isActive()) {
+        // Quiz completed, show congratulations and return to menu
+        setTimeout(async () => {
+          await session.layouts.showReferenceCard(
+            "Great Job!",
+            "Flashcard session complete!\n\nReturning to main menu...",
+            { durationMs: 3000 }
+          );
+          setTimeout(() => this.showMainMenu(session), 3000);
+        }, 1000);
+      } else if (this.quizManager) {
+        // Still active, check again in 1 second
+        setTimeout(checkCompletion, 1000);
+      }
+    };
+
+    // Start checking after a short delay
+    setTimeout(checkCompletion, 1000);
   }
 }
 

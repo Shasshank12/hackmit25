@@ -1,4 +1,4 @@
-import { Flashcard, FlashcardSet } from '../types';
+import { Flashcard, FlashcardSet } from "../types";
 
 /**
  * Quiz session state and progress tracking
@@ -34,7 +34,7 @@ export class FlashcardQuiz {
 
   constructor(flashcardSet: FlashcardSet, sessionId?: string) {
     // Initialize the queue with all flashcards
-    this.queue = flashcardSet.cards.map(card => ({
+    this.queue = flashcardSet.cards.map((card) => ({
       ...card,
       attempts: 0,
     }));
@@ -76,10 +76,13 @@ export class FlashcardQuiz {
    */
   flashcard_correct(userResponse: string): boolean {
     if (!this.currentCard) {
-      throw new Error('No current card to check');
+      throw new Error("No current card to check");
     }
 
-    const isCorrect = this.validateResponse(userResponse, this.currentCard.definition);
+    const isCorrect = this.validateResponse(
+      userResponse,
+      this.currentCard.term
+    );
     this.currentCard.isCorrect = isCorrect;
 
     if (!isCorrect) {
@@ -97,14 +100,17 @@ export class FlashcardQuiz {
   /**
    * Validate user response against expected answer
    */
-  private validateResponse(userResponse: string, expectedAnswer: string): boolean {
+  private validateResponse(
+    userResponse: string,
+    expectedAnswer: string
+  ): boolean {
     // Normalize both responses for comparison
     const normalizeText = (text: string): string => {
       return text
         .toLowerCase()
         .trim()
-        .replace(/[^\w\s]/g, '') // Remove punctuation
-        .replace(/\s+/g, ' '); // Normalize whitespace
+        .replace(/[^\w\s]/g, "") // Remove punctuation
+        .replace(/\s+/g, " "); // Normalize whitespace
     };
 
     const normalizedUser = normalizeText(userResponse);
@@ -116,13 +122,15 @@ export class FlashcardQuiz {
     }
 
     // Check if user response contains key terms from expected answer
-    const expectedWords = normalizedExpected.split(' ').filter(word => word.length > 3);
-    const userWords = normalizedUser.split(' ');
-    
+    const expectedWords = normalizedExpected
+      .split(" ")
+      .filter((word) => word.length > 3);
+    const userWords = normalizedUser.split(" ");
+
     // Calculate similarity - user must include at least 70% of key terms
-    const matchingWords = expectedWords.filter(word => 
-      userWords.some(userWord => 
-        userWord.includes(word) || word.includes(userWord)
+    const matchingWords = expectedWords.filter((word) =>
+      userWords.some(
+        (userWord) => userWord.includes(word) || word.includes(userWord)
       )
     );
 
@@ -140,7 +148,8 @@ export class FlashcardQuiz {
     currentStreak: number;
     totalAttempts: number;
   } {
-    const totalAttempts = this.session.cardsCompleted + this.session.incorrectAttempts;
+    const totalAttempts =
+      this.session.cardsCompleted + this.session.incorrectAttempts;
     const currentStreak = this.calculateCurrentStreak();
 
     return {
@@ -158,7 +167,7 @@ export class FlashcardQuiz {
   private completeQuiz(): void {
     this.session.isComplete = true;
     this.session.endTime = new Date();
-    
+
     // Display congratulations with ASCII art
     this.showCongratulations();
   }
@@ -166,27 +175,19 @@ export class FlashcardQuiz {
   /**
    * Show congratulations message with ASCII art for smart glasses
    */
-  private showCongratulations(): void {
+  showCongratulations(): void {
     const duration = this.getQuizDuration();
     const accuracy = this.calculateAccuracy();
 
-    const asciiArt = `
-    * * * QUIZ COMPLETE! * * *
-    
-         WELL DONE!
-    
-    +-------------------------+
-    |  Cards Correct: ${this.session.cardsCompleted.toString().padStart(2)}/${this.session.totalCards}     |
-    +-------------------------+
-    
-        Keep up the learning!
-    `;
+    const congratsMessage = `QUIZ COMPLETE!
 
-    console.log(asciiArt);
-    
-    // For smart glasses display (smaller format)
-    const glassesDisplay = this.getGlassesDisplay();
-    return glassesDisplay;
+WELL DONE!
+
+Cards Correct: ${this.session.cardsCompleted}/${this.session.totalCards}
+
+Keep up the learning!`;
+
+    console.log(congratsMessage);
   }
 
   /**
@@ -196,20 +197,19 @@ export class FlashcardQuiz {
     const accuracy = this.calculateAccuracy();
     const duration = this.getQuizDuration();
 
-    return `
-* QUIZ COMPLETE! *
+    return `QUIZ COMPLETE!
 Cards Correct: ${this.session.cardsCompleted}/${this.session.totalCards}
-Great job!
-    `.trim();
+Great job!`;
   }
 
   /**
    * Calculate quiz accuracy percentage
    */
   private calculateAccuracy(): number {
-    const totalAttempts = this.session.cardsCompleted + this.session.incorrectAttempts;
+    const totalAttempts =
+      this.session.cardsCompleted + this.session.incorrectAttempts;
     if (totalAttempts === 0) return 100;
-    
+
     return Math.round((this.session.cardsCompleted / totalAttempts) * 100);
   }
 
@@ -221,7 +221,7 @@ Great job!
     const durationMs = endTime.getTime() - this.session.startTime.getTime();
     const durationMinutes = Math.floor(durationMs / 60000);
     const durationSeconds = Math.floor((durationMs % 60000) / 1000);
-    
+
     if (durationMinutes > 0) {
       return `${durationMinutes}m ${durationSeconds}s`;
     }
@@ -265,13 +265,13 @@ Great job!
    * Reset quiz to start over
    */
   resetQuiz(): void {
-    this.queue = this.session.flashcardSet.cards.map(card => ({
+    this.queue = this.session.flashcardSet.cards.map((card) => ({
       ...card,
       attempts: 0,
     }));
-    
+
     this.shuffleQueue();
-    
+
     this.session = {
       ...this.session,
       cardsCompleted: 0,
@@ -280,7 +280,7 @@ Great job!
       endTime: undefined,
       isComplete: false,
     };
-    
+
     this.currentCard = null;
   }
 
@@ -299,10 +299,10 @@ Great job!
    */
   getHint(): string | null {
     if (!this.currentCard) return null;
-    
-    const words = this.currentCard.definition.split(' ');
+
+    const words = this.currentCard.definition.split(" ");
     const hintWords = words.slice(0, Math.min(3, words.length));
-    return hintWords.join(' ') + '...';
+    return hintWords.join(" ") + "...";
   }
 
   /**
