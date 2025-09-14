@@ -67,6 +67,140 @@ class LectureAssistantApp extends AppServer {
 
     console.log(`🎓 Lecture Assistant started on port ${config.port}`);
     super(config);
+
+    // Add API endpoints for web dashboard
+    this.setupAPIEndpoints();
+  }
+
+  /**
+   * Setup API endpoints for web dashboard
+   */
+  private setupAPIEndpoints(): void {
+    try {
+      // Try to access the express app instance
+      const app = (this as any).app;
+
+      if (!app) {
+        console.error("❌ Could not access Express app instance");
+        return;
+      }
+
+      // Add CORS headers for web dashboard
+      app.use((req: any, res: any, next: any) => {
+        res.header("Access-Control-Allow-Origin", "*");
+        res.header(
+          "Access-Control-Allow-Methods",
+          "GET, POST, PUT, DELETE, OPTIONS"
+        );
+        res.header(
+          "Access-Control-Allow-Headers",
+          "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+        );
+        if (req.method === "OPTIONS") {
+          res.sendStatus(200);
+        } else {
+          next();
+        }
+      });
+
+      // API endpoint to get the latest notes
+      app.get("/api/notes/latest", async (req: any, res: any) => {
+        try {
+          const notesDir = path.join(process.cwd(), "notes");
+          const latestNotes = await this.getLatestNotesFile(notesDir);
+
+          if (!latestNotes) {
+            return res.json({
+              success: false,
+              message: "No notes found",
+              content: "",
+              lastUpdated: null,
+              topic: null,
+            });
+          }
+
+          const content = await fs.promises.readFile(
+            latestNotes.filePath,
+            "utf-8"
+          );
+
+          res.json({
+            success: true,
+            content: content,
+            lastUpdated: latestNotes.lastModified,
+            topic: latestNotes.topic,
+            filename: latestNotes.filename,
+          });
+        } catch (error) {
+          console.error("Error fetching latest notes:", error);
+          res.status(500).json({
+            success: false,
+            message: "Error fetching notes",
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
+      });
+
+      console.log("📡 API endpoints setup complete");
+    } catch (error) {
+      console.error("❌ Error setting up API endpoints:", error);
+    }
+  }
+
+  /**
+   * Get the latest notes file from all topic directories
+   */
+  private async getLatestNotesFile(notesDir: string): Promise<{
+    filePath: string;
+    lastModified: Date;
+    topic: string;
+    filename: string;
+  } | null> {
+    try {
+      if (!fs.existsSync(notesDir)) {
+        return null;
+      }
+
+      let latestFile: {
+        filePath: string;
+        lastModified: Date;
+        topic: string;
+        filename: string;
+      } | null = null;
+
+      // Read all topic directories
+      const topicDirs = await fs.promises.readdir(notesDir, {
+        withFileTypes: true,
+      });
+
+      for (const dir of topicDirs) {
+        if (dir.isDirectory()) {
+          const topicPath = path.join(notesDir, dir.name);
+          const files = await fs.promises.readdir(topicPath);
+
+          for (const file of files) {
+            if (file.endsWith(".md")) {
+              const filePath = path.join(topicPath, file);
+              const stats = await fs.promises.stat(filePath);
+
+              if (!latestFile || stats.mtime > latestFile.lastModified) {
+                latestFile = {
+                  filePath,
+                  lastModified: stats.mtime,
+                  topic: dir.name,
+                  filename: file,
+                };
+              }
+            }
+          }
+        }
+      }
+
+      return latestFile;
+    } catch (error) {
+      console.error("Error getting latest notes file:", error);
+      return null;
+    }
   }
 
   /**

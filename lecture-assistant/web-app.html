@@ -1,0 +1,1229 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lecture Assistant - Notes & Flashcards</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --secondary-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --accent-gradient: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            --dark-bg: #0f0f23;
+            --dark-surface: #1a1a2e;
+            --dark-card: #16213e;
+            --light-bg: #f8f9fa;
+            --light-surface: #ffffff;
+            --light-card: #ffffff;
+            --text-primary: #333;
+            --text-secondary: #6c757d;
+            --shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            --shadow-hover: 0 30px 60px rgba(0, 0, 0, 0.2);
+            --border-radius: 20px;
+            --transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--primary-gradient);
+            min-height: 100vh;
+            padding: 20px;
+            transition: var(--transition);
+            overflow-x: hidden;
+        }
+
+        body.dark {
+            background: var(--dark-bg);
+        }
+
+        /* Floating particles background */
+        .particles {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translateY(0px) rotate(0deg);
+                opacity: 0.3;
+            }
+
+            50% {
+                transform: translateY(-20px) rotate(180deg);
+                opacity: 1;
+            }
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: var(--light-surface);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            transition: var(--transition);
+            position: relative;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        body.dark .container {
+            background: var(--dark-surface);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .header {
+            background: var(--secondary-gradient);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+            transform: translateX(-100%);
+            animation: shimmer 3s infinite;
+        }
+
+        @keyframes shimmer {
+            0% {
+                transform: translateX(-100%);
+            }
+
+            100% {
+                transform: translateX(100%);
+            }
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            font-weight: 300;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            animation: fadeInUp 1s ease-out;
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            animation: fadeInUp 1s ease-out 0.2s both;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Dark mode toggle */
+        .dark-mode-toggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 50px;
+            width: 60px;
+            height: 30px;
+            cursor: pointer;
+            transition: var(--transition);
+            backdrop-filter: blur(10px);
+        }
+
+        .dark-mode-toggle:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        .toggle-slider {
+            width: 26px;
+            height: 26px;
+            background: white;
+            border-radius: 50%;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: #333;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        body.dark .toggle-slider {
+            transform: translateX(30px);
+            background: var(--dark-bg);
+            color: white;
+        }
+
+        .tabs {
+            display: flex;
+            background: var(--light-bg);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        body.dark .tabs {
+            background: var(--dark-card);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .tab {
+            flex: 1;
+            padding: 25px 20px;
+            text-align: center;
+            cursor: pointer;
+            background: none;
+            border: none;
+            font-size: 1.1rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            transition: var(--transition);
+            border-bottom: 3px solid transparent;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .tab::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, transparent 30%, rgba(79, 172, 254, 0.1) 50%, transparent 70%);
+            transform: translateX(-100%);
+            transition: var(--transition);
+        }
+
+        .tab:hover::before {
+            transform: translateX(100%);
+        }
+
+        .tab.active {
+            color: #4facfe;
+            background: var(--light-surface);
+            border-bottom-color: #4facfe;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(79, 172, 254, 0.3);
+        }
+
+        body.dark .tab.active {
+            background: var(--dark-surface);
+            color: #00f2fe;
+            border-bottom-color: #00f2fe;
+        }
+
+        .tab:hover {
+            background: var(--light-surface);
+            transform: translateY(-1px);
+        }
+
+        body.dark .tab:hover {
+            background: var(--dark-surface);
+        }
+
+        .tab-content {
+            display: none;
+            padding: 40px;
+            min-height: 600px;
+            background: var(--light-surface);
+            animation: fadeIn 0.5s ease-in-out;
+        }
+
+        body.dark .tab-content {
+            background: var(--dark-surface);
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Notes Tab Styles */
+        .notes-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid rgba(0, 0, 0, 0.1);
+            position: relative;
+        }
+
+        body.dark .notes-header {
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .notes-title {
+            font-size: 2rem;
+            color: var(--text-primary);
+            font-weight: 600;
+            background: var(--secondary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: fadeInUp 0.8s ease-out;
+        }
+
+        body.dark .notes-title {
+            color: white;
+            -webkit-text-fill-color: white;
+        }
+
+        .last-updated {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            animation: fadeInUp 0.8s ease-out 0.2s both;
+        }
+
+        .notes-content {
+            background: var(--light-bg);
+            border-radius: 15px;
+            padding: 30px;
+            border-left: 4px solid #4facfe;
+            font-family: 'Courier New', monospace;
+            line-height: 1.8;
+            white-space: pre-wrap;
+            max-height: 500px;
+            overflow-y: auto;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+            transition: var(--transition);
+            position: relative;
+        }
+
+        body.dark .notes-content {
+            background: var(--dark-card);
+            border-left: 4px solid #00f2fe;
+            color: #e0e0e0;
+        }
+
+        /* Custom scrollbar for notes */
+        .notes-content::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .notes-content::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 4px;
+        }
+
+        .notes-content::-webkit-scrollbar-thumb {
+            background: var(--secondary-gradient);
+            border-radius: 4px;
+        }
+
+        .notes-content::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(135deg, #3d8bfe 0%, #00d4fe 100%);
+        }
+
+        body.dark .notes-content::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+
+        .notes-placeholder {
+            text-align: center;
+            color: var(--text-secondary);
+            font-style: italic;
+            padding: 60px 40px;
+            animation: fadeInUp 1s ease-out;
+        }
+
+        .refresh-btn {
+            background: var(--secondary-gradient);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(79, 172, 254, 0.3);
+        }
+
+        .refresh-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.2) 50%, transparent 70%);
+            transform: translateX(-100%);
+            transition: var(--transition);
+        }
+
+        .refresh-btn:hover::before {
+            transform: translateX(100%);
+        }
+
+        .refresh-btn:hover {
+            transform: translateY(-3px) scale(1.05);
+            box-shadow: 0 8px 25px rgba(79, 172, 254, 0.4);
+        }
+
+        /* Flashcards Tab Styles */
+        .subjects-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-top: 20px;
+        }
+
+        .subject-card {
+            background: var(--light-card);
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e9ecef;
+            transition: var(--transition);
+        }
+
+        body.dark .subject-card {
+            background: var(--dark-card);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .subject-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+
+        body.dark .subject-card:hover {
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+        }
+
+        .subject-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .subject-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            margin-right: 15px;
+            color: white;
+        }
+
+        .math-icon {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+        }
+
+        .science-icon {
+            background: linear-gradient(135deg, #4ecdc4, #44a08d);
+        }
+
+        .history-icon {
+            background: linear-gradient(135deg, #45b7d1, #96c93d);
+        }
+
+        .english-icon {
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+        }
+
+        .cs-icon {
+            background: linear-gradient(135deg, #4facfe, #00f2fe);
+        }
+
+        .subject-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            transition: var(--transition);
+        }
+
+        body.dark .subject-title {
+            color: #e0e0e0;
+        }
+
+        .subtopics {
+            margin-bottom: 20px;
+        }
+
+        .subtopic {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            background: var(--light-bg);
+            border-radius: 8px;
+            border-left: 3px solid #dee2e6;
+            transition: var(--transition);
+        }
+
+        body.dark .subtopic {
+            background: var(--dark-surface);
+            border-left: 3px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .subtopic-name {
+            font-weight: 500;
+            color: var(--text-primary);
+            transition: var(--transition);
+        }
+
+        body.dark .subtopic-name {
+            color: #e0e0e0;
+        }
+
+        .progress-bar {
+            width: 120px;
+            height: 10px;
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        body.dark .progress-bar {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--secondary-gradient);
+            border-radius: 10px;
+            transition: width 2s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+            width: 0%;
+            animation: progressFill 2s ease-out forwards;
+        }
+
+        .progress-fill::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.3) 50%, transparent 70%);
+            animation: progressShimmer 2s infinite;
+        }
+
+        @keyframes progressFill {
+            from {
+                width: 0%;
+            }
+
+            to {
+                width: var(--target-width, 0%);
+            }
+        }
+
+        @keyframes progressShimmer {
+            0% {
+                transform: translateX(-100%);
+            }
+
+            100% {
+                transform: translateX(100%);
+            }
+        }
+
+        .progress-text {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-left: 10px;
+            min-width: 40px;
+            transition: var(--transition);
+        }
+
+        body.dark .progress-text {
+            color: #b0b0b0;
+        }
+
+        .overall-progress {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .overall-progress h3 {
+            margin-bottom: 10px;
+            font-size: 1.3rem;
+        }
+
+        .overall-progress-bar {
+            width: 100%;
+            height: 12px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 6px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .overall-progress-fill {
+            height: 100%;
+            background: white;
+            border-radius: 6px;
+            transition: width 0.3s ease;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 15px;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 1.5rem;
+            font-weight: bold;
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                border-radius: 10px;
+            }
+
+            .header {
+                padding: 20px;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .tab-content {
+                padding: 20px;
+            }
+
+            .subjects-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .notes-header {
+                flex-direction: column;
+                gap: 15px;
+                align-items: flex-start;
+            }
+        }
+
+        /* Loading Animation */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #4facfe;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Floating particles background -->
+    <div class="particles" id="particles"></div>
+
+    <div class="container">
+        <div class="header">
+            <button class="dark-mode-toggle" onclick="toggleDarkMode()">
+                <div class="toggle-slider">
+                    <i class="fas fa-sun"></i>
+                </div>
+            </button>
+            <h1><i class="fas fa-graduation-cap"></i> Lecture Assistant</h1>
+            <p>Smart Notes & Flashcard Progress Tracker</p>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('notes')">📝 Smart Notes</button>
+            <button class="tab" onclick="showTab('flashcards')">🎯 Flashcard Progress</button>
+        </div>
+
+        <!-- Notes Tab -->
+        <div id="notes" class="tab-content active">
+            <div class="notes-header">
+                <div>
+                    <h2 class="notes-title">Generated Lecture Notes</h2>
+                    <p class="last-updated">Last updated: <span id="lastUpdated">Loading...</span></p>
+                </div>
+                <button class="refresh-btn" onclick="refreshNotes()">
+                    <span id="refreshText">🔄 Refresh Notes</span>
+                </button>
+            </div>
+
+            <div class="notes-content" id="notesContent">
+                <div class="notes-placeholder">
+                    <p>📚 No lecture notes available yet.</p>
+                    <p>Start a lecture session to generate AI-powered notes!</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Flashcards Tab -->
+        <div id="flashcards" class="tab-content">
+            <div class="overall-progress">
+                <h3>📊 Overall Progress</h3>
+                <div class="overall-progress-bar">
+                    <div class="overall-progress-fill" id="overallProgress" style="width: 0%"></div>
+                </div>
+                <div class="stats">
+                    <div class="stat">
+                        <span class="stat-number" id="totalCards">0</span>
+                        <span class="stat-label">Total Cards</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-number" id="completedCards">0</span>
+                        <span class="stat-label">Completed</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-number" id="averageScore">0%</span>
+                        <span class="stat-label">Avg Score</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="subjects-grid">
+                <!-- Mathematics -->
+                <div class="subject-card">
+                    <div class="subject-header">
+                        <div class="subject-icon math-icon">📐</div>
+                        <h3 class="subject-title">Mathematics</h3>
+                    </div>
+                    <div class="subtopics">
+                        <div class="subtopic">
+                            <span class="subtopic-name">Integration</span>
+                            <div style="display: flex; align-items: center;">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: 75%"></div>
+                                </div>
+                                <span class="progress-text">75%</span>
+                            </div>
+                        </div>
+                        <div class="subtopic">
+                            <span class="subtopic-name">Differentiation</span>
+                            <div style="display: flex; align-items: center;">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: 60%"></div>
+                                </div>
+                                <span class="progress-text">60%</span>
+                            </div>
+                        </div>
+                        <div class="subtopic">
+                            <span class="subtopic-name">Linear Algebra</span>
+                            <div style="display: flex; align-items: center;">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: 90%"></div>
+                                </div>
+                                <span class="progress-text">90%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Science -->
+            <div class="subject-card">
+                <div class="subject-header">
+                    <div class="subject-icon science-icon">🔬</div>
+                    <h3 class="subject-title">Science</h3>
+                </div>
+                <div class="subtopics">
+                    <div class="subtopic">
+                        <span class="subtopic-name">Physics</span>
+                        <div style="display: flex; align-items: center;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 45%"></div>
+                            </div>
+                            <span class="progress-text">45%</span>
+                        </div>
+                    </div>
+                    <div class="subtopic">
+                        <span class="subtopic-name">Chemistry</span>
+                        <div style="display: flex; align-items: center;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 80%"></div>
+                            </div>
+                            <span class="progress-text">80%</span>
+                        </div>
+                    </div>
+                    <div class="subtopic">
+                        <span class="subtopic-name">Biology</span>
+                        <div style="display: flex; align-items: center;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 65%"></div>
+                            </div>
+                            <span class="progress-text">65%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- American History -->
+            <div class="subject-card">
+                <div class="subject-header">
+                    <div class="subject-icon history-icon">🏛️</div>
+                    <h3 class="subject-title">American History</h3>
+                </div>
+                <div class="subtopics">
+                    <div class="subtopic">
+                        <span class="subtopic-name">World War 2</span>
+                        <div style="display: flex; align-items: center;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 95%"></div>
+                            </div>
+                            <span class="progress-text">95%</span>
+                        </div>
+                    </div>
+                    <div class="subtopic">
+                        <span class="subtopic-name">Civil War</span>
+                        <div style="display: flex; align-items: center;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 70%"></div>
+                            </div>
+                            <span class="progress-text">70%</span>
+                        </div>
+                    </div>
+                    <div class="subtopic">
+                        <span class="subtopic-name">Revolutionary War</span>
+                        <div style="display: flex; align-items: center;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 85%"></div>
+                            </div>
+                            <span class="progress-text">85%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- English Literature -->
+            <div class="subject-card">
+                <div class="subject-header">
+                    <div class="subject-icon english-icon">📚</div>
+                    <h3 class="subject-title">English Literature</h3>
+                </div>
+                <div class="subtopics">
+                    <div class="subtopic">
+                        <span class="subtopic-name">Shakespeare</span>
+                        <div style="display: flex; align-items: center;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 55%"></div>
+                            </div>
+                            <span class="progress-text">55%</span>
+                        </div>
+                    </div>
+                    <div class="subtopic">
+                        <span class="subtopic-name">Poetry Analysis</span>
+                        <div style="display: flex; align-items: center;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 40%"></div>
+                            </div>
+                            <span class="progress-text">40%</span>
+                        </div>
+                    </div>
+                    <div class="subtopic">
+                        <span class="subtopic-name">Modern Literature</span>
+                        <div style="display: flex; align-items: center;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 30%"></div>
+                            </div>
+                            <span class="progress-text">30%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Computer Science -->
+            <div class="subject-card">
+                <div class="subject-header">
+                    <div class="subject-icon cs-icon">💻</div>
+                    <h3 class="subject-title">Computer Science</h3>
+                </div>
+                <div class="subtopics">
+                    <div class="subtopic">
+                        <span class="subtopic-name">Machine Learning</span>
+                        <div style="display: flex; align-items: center;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 88%"></div>
+                            </div>
+                            <span class="progress-text">88%</span>
+                        </div>
+                    </div>
+                    <div class="subtopic">
+                        <span class="subtopic-name">Data Structures</span>
+                        <div style="display: flex; align-items: center;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 72%"></div>
+                            </div>
+                            <span class="progress-text">72%</span>
+                        </div>
+                    </div>
+                    <div class="subtopic">
+                        <span class="subtopic-name">Algorithms</span>
+                        <div style="display: flex; align-items: center;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 65%"></div>
+                            </div>
+                            <span class="progress-text">65%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    </div>
+
+    <script>
+        // Dark mode functionality
+        function toggleDarkMode() {
+            document.body.classList.toggle('dark');
+            const isDark = document.body.classList.contains('dark');
+            localStorage.setItem('darkMode', isDark);
+
+            // Update toggle icon
+            const icon = document.querySelector('.toggle-slider i');
+            icon.className = isDark ? 'fas fa-moon' : 'fas fa-sun';
+        }
+
+        // Initialize dark mode from localStorage
+        function initDarkMode() {
+            const savedDarkMode = localStorage.getItem('darkMode') === 'true';
+            if (savedDarkMode) {
+                document.body.classList.add('dark');
+                document.querySelector('.toggle-slider i').className = 'fas fa-moon';
+            }
+        }
+
+        // Create floating particles
+        function createParticles() {
+            const particlesContainer = document.getElementById('particles');
+            const particleCount = 50;
+
+            for (let i = 0; i < particleCount; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.top = Math.random() * 100 + '%';
+                particle.style.animationDelay = Math.random() * 6 + 's';
+                particle.style.animationDuration = (Math.random() * 4 + 4) + 's';
+                particlesContainer.appendChild(particle);
+            }
+        }
+
+        // Tab switching functionality
+        function showTab(tabName) {
+            // Hide all tab contents
+            const tabContents = document.querySelectorAll('.tab-content');
+            tabContents.forEach(content => content.classList.remove('active'));
+
+            // Remove active class from all tabs
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach(tab => tab.classList.remove('active'));
+
+            // Show selected tab content
+            document.getElementById(tabName).classList.add('active');
+
+            // Add active class to clicked tab
+            event.target.classList.add('active');
+
+            // Animate progress bars when switching to flashcards tab
+            if (tabName === 'flashcards') {
+                setTimeout(() => {
+                    animateProgressBars();
+                    updateOverallProgress();
+                }, 300);
+            }
+        }
+
+        // Notes functionality
+        function refreshNotes() {
+            const refreshBtn = document.getElementById('refreshText');
+            const originalText = refreshBtn.textContent;
+
+            // Show loading state
+            refreshBtn.innerHTML = '<span class="loading"></span> Refreshing...';
+
+            // Simulate API call
+            setTimeout(() => {
+                loadNotes();
+                refreshBtn.textContent = originalText;
+            }, 2000);
+        }
+
+        async function loadNotes() {
+            const notesContent = document.getElementById('notesContent');
+            const lastUpdated = document.getElementById('lastUpdated');
+            
+            try {
+                // Show loading state
+                notesContent.innerHTML = `
+                    <div class="notes-placeholder">
+                        <div class="loading"></div>
+                        <p>Loading latest notes...</p>
+                    </div>
+                `;
+                
+                // Fetch latest notes from API
+                const apiBaseUrl = window.location.hostname === 'localhost' 
+                    ? 'http://localhost:3000' 
+                    : 'https://your-app-name.railway.app'; // We'll update this after Railway deployment
+                const response = await fetch(`${apiBaseUrl}/api/notes/latest`);
+                const data = await response.json();
+                
+                if (data.success && data.content) {
+                    // Display the actual notes content
+                    notesContent.innerHTML = `<pre>${data.content}</pre>`;
+                    
+                    // Update last modified time
+                    const lastModified = new Date(data.lastUpdated);
+                    lastUpdated.textContent = lastModified.toLocaleString();
+                    
+                    // Update notes title to include topic
+                    const notesTitle = document.querySelector('.notes-title');
+                    if (data.topic) {
+                        notesTitle.textContent = `Generated Lecture Notes - ${data.topic.charAt(0).toUpperCase() + data.topic.slice(1)}`;
+                    }
+                } else {
+                    // No notes found - show placeholder
+                    notesContent.innerHTML = `
+                        <div class="notes-placeholder">
+                            <p>📚 No lecture notes available yet.</p>
+                            <p>Start a lecture session to generate AI-powered notes!</p>
+                            ${data.message ? `<p><em>${data.message}</em></p>` : ''}
+                        </div>
+                    `;
+                    lastUpdated.textContent = 'No notes generated yet';
+                }
+                
+            } catch (error) {
+                console.error('Error loading notes:', error);
+                
+                // Show error state
+                notesContent.innerHTML = `
+                    <div class="notes-placeholder">
+                        <p>⚠️ Error loading notes</p>
+                        <p>Make sure the lecture assistant server is running on port 3000</p>
+                        <p><em>${error.message}</em></p>
+                    </div>
+                `;
+                lastUpdated.textContent = 'Error loading notes';
+            }
+        }
+
+        // Animate progress bars on load
+        function animateProgressBars() {
+            const progressFills = document.querySelectorAll('.progress-fill');
+            const progressValues = [75, 60, 90, 45, 80, 65, 95, 70, 85, 55, 40, 30, 88, 72, 65];
+
+            progressFills.forEach((fill, index) => {
+                if (progressValues[index]) {
+                    fill.style.setProperty('--target-width', progressValues[index] + '%');
+                    fill.style.width = progressValues[index] + '%';
+
+                    // Update progress text
+                    const progressText = fill.parentElement.nextElementSibling;
+                    if (progressText) {
+                        animateNumber(progressText, 0, progressValues[index], 2000);
+                    }
+                }
+            });
+        }
+
+        // Animate number counting
+        function animateNumber(element, start, end, duration) {
+            const startTime = performance.now();
+            const isPercentage = element.textContent.includes('%');
+
+            function updateNumber(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const current = Math.round(start + (end - start) * progress);
+
+                element.textContent = current + (isPercentage ? '%' : '');
+
+                if (progress < 1) {
+                    requestAnimationFrame(updateNumber);
+                }
+            }
+
+            requestAnimationFrame(updateNumber);
+        }
+
+        // Flashcard progress calculation
+        function updateOverallProgress() {
+            const subjects = [
+                { name: 'Mathematics', progress: [75, 60, 90] },
+                { name: 'Science', progress: [45, 80, 65] },
+                { name: 'American History', progress: [95, 70, 85] },
+                { name: 'English Literature', progress: [55, 40, 30] },
+                { name: 'Computer Science', progress: [88, 72, 65] }
+            ];
+
+            let totalCards = 0;
+            let completedCards = 0;
+            let totalProgress = 0;
+
+            subjects.forEach(subject => {
+                subject.progress.forEach(progress => {
+                    totalCards += 100; // Assuming 100 cards per subtopic
+                    completedCards += progress;
+                    totalProgress += progress;
+                });
+            });
+
+            const overallPercentage = Math.round(totalProgress / (subjects.length * 3));
+            const averageScore = Math.round(totalProgress / (subjects.length * 3));
+
+            // Animate overall progress bar at the same time as other bars
+            const overallProgressBar = document.getElementById('overallProgress');
+            overallProgressBar.style.width = '0%';
+            setTimeout(() => {
+                overallProgressBar.style.width = overallPercentage + '%';
+            }, 200); // Start at the same time as other progress bars
+
+            // Animate statistics
+            setTimeout(() => {
+                animateNumber(document.getElementById('totalCards'), 0, totalCards, 1500);
+                animateNumber(document.getElementById('completedCards'), 0, completedCards, 1500);
+                animateNumber(document.getElementById('averageScore'), 0, averageScore, 1500);
+            }, 800); // Start earlier to sync with progress bars
+        }
+
+        // Initialize the app
+        document.addEventListener('DOMContentLoaded', function () {
+            // Initialize dark mode
+            initDarkMode();
+
+            // Create floating particles
+            createParticles();
+
+            // Load initial content
+            loadNotes();
+
+            // Animate progress bars on initial load
+            setTimeout(() => {
+                animateProgressBars();
+                updateOverallProgress();
+            }, 500);
+
+            // Update timestamp every minute
+            setInterval(() => {
+                const lastUpdated = document.getElementById('lastUpdated');
+                if (lastUpdated.textContent !== 'Loading...') {
+                    lastUpdated.textContent = new Date().toLocaleString();
+                }
+            }, 60000);
+
+            // Add hover effects to subject cards
+            const subjectCards = document.querySelectorAll('.subject-card');
+            subjectCards.forEach((card, index) => {
+                card.style.animationDelay = `${index * 0.1}s`;
+                card.classList.add('animate-in');
+            });
+        });
+
+        // Simulate real-time updates (for demo purposes)
+        setInterval(() => {
+            // Randomly update one progress bar for demo effect
+            const progressBars = document.querySelectorAll('.progress-fill');
+            const randomIndex = Math.floor(Math.random() * progressBars.length);
+            const currentWidth = parseInt(progressBars[randomIndex].style.width) || 0;
+
+            if (currentWidth < 100 && Math.random() > 0.7) {
+                const newWidth = Math.min(currentWidth + Math.floor(Math.random() * 5) + 1, 100);
+                progressBars[randomIndex].style.width = newWidth + '%';
+
+                // Update the corresponding progress text with animation
+                const progressText = progressBars[randomIndex].parentElement.nextElementSibling;
+                if (progressText) {
+                    animateNumber(progressText, currentWidth, newWidth, 500);
+                }
+
+                // Update overall progress
+                setTimeout(() => updateOverallProgress(), 500);
+            }
+        }, 15000); // Update every 15 seconds
+    </script>
+</body>
+
+</html>
