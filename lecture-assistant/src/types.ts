@@ -56,3 +56,25 @@ export interface AgentResponse {
   data?: any;
   message?: string;
 }
+
+// Transcript processing types
+export interface ProcessedNotes {
+    summary: string;
+    keyPoints: string[];
+    detailedNotes: string;
+    timestamp: Date;
+    sourceFile: string;
+}
+
+export interface Flashcard {
+    term: string;
+    definition: string;
+}
+
+export interface FlashcardSet {
+    title: string;
+    description: string;
+    cards: Flashcard[];
+    createdAt: Date;
+    sourceNotes: string;
+}
