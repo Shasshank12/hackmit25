@@ -29,13 +29,28 @@ Prism is a comprehensive learning ecosystem that captures lectures, processes co
 
 ### System Design
 ```
-Smart Glasses (MentraOS) → Voice Input/Visual Output
-         ↓
-Application Layer (Node.js/TypeScript) → Session & Event Management
-         ↓
-Agent System → Topic Detection | Keyword Extraction | AI Processing
-         ↓
-Storage Layer → Local Files | Claude Sonnet 4 | JSON Configs
+┌─────────────────────────────────────────────────────────────┐
+│                    SMART GLASSES LAYER                      │
+│                     (MentraOS SDK)                         │
+│           Voice Input ←→ Visual Output ←→ Gestures          │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+┌─────────────────────────▼───────────────────────────────────┐
+│                  APPLICATION LAYER                          │
+│               (Node.js + TypeScript)                       │
+│        Session Management ←→ Event Handling                │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+┌─────────────────────────▼───────────────────────────────────┐
+│                    AGENT SYSTEM                            │
+│   Topic Detection │ Keyword Extraction │ AI Processing     │
+│   FlashcardGen    │ Quiz Management   │ Caption Display   │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+┌─────────────────────────▼───────────────────────────────────┐
+│                   STORAGE LAYER                            │
+│   Local Files │ Claude Sonnet 4 │ JSON Configs │ Markdown  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ### Core Components
@@ -287,8 +302,6 @@ MIT License - See LICENSE file for details
 
 - **MentraOS SDK**: [docs.mentra.glass](https://docs.mentra.glass/)
 - **Anthropic Claude**: [console.anthropic.com](https://console.anthropic.com)
-- **Issues**: Open GitHub issues for bug reports or feature requests
-- **Documentation**: See `TRANSCRIPT_PROCESSING.md` for detailed AI processing info
 
 ## Roadmap
 
