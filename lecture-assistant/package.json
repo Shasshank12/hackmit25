@@ -6,6 +6,7 @@
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "demo": "tsx src/demo.ts",
+    "demo:transcript": "tsx src/demo-transcript-processing.ts",
     "start": "node dist/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -21,6 +22,7 @@
   },
   "dependencies": {
     "express": "^5.1.0",
-    "node-fetch": "^2.7.0"
+    "node-fetch": "^2.7.0",
+    "@anthropic-ai/sdk": "^0.24.3"
   }
 }
